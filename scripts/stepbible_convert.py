@@ -54,6 +54,8 @@ def tokens(paths, language: str):
                 for ordinal,(surface,tag) in enumerate(zip(words,grammar)):
                     surface=surface.strip(); tag=tag.strip()
                     if not surface or not tag or '=' not in tag: continue
+                    if language == 'arc' and not (current[0] == 'DAN' and ((current[1] == 2 and current[2] >= 4) or 3 <= current[1] <= 7)):
+                        continue
                     strongs,morph=tag.split('=',1)
                     candidates=re.findall(r'[GH][0-9]{4}[A-Z]?', strongs)
                     strongs=next((x for x in reversed(candidates) if not x.startswith(('H900','G900'))), (candidates[-1] if candidates else None))
@@ -82,6 +84,7 @@ def main():
             if f"{t['book']}:{t['chapter']}:{t['verse']}" not in canonical:
                 skipped.append({'book':t['book'],'chapter':t['chapter'],'verse':t['verse'],'reason':'not in bundled WEB versification'})
             else: toks.append(t)
+    used={t['strongs'] for t in toks}; lex=[x for x in lex if x['strongs'] in used]
     if not lex or not toks: raise SystemExit('No valid lexemes or tokens found')
     manifest={'format':1,'code':a.code,'language':a.language,'name':a.name,'license':a.license,'source_url':a.source_url,'source_revision':a.source_revision,'source_files':[{'path':str(f),'sha256':sha256(f)} for f in [*a.lexicon,*a.morphology,*a.tagged]],'counts':{'lexemes':len(lex),'tokens':len(toks),'skipped_tokens':len(skipped)},'skipped_references':skipped}
     with zipfile.ZipFile(a.output,'w',compression=zipfile.ZIP_DEFLATED) as z:

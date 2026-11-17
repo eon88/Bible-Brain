@@ -11,7 +11,9 @@ analysis = Analysis(
     pathex=[str(root)],
     datas=[
         (str(root / "bible_brain" / "data" / "web.json.gz"), "bible_brain/data"),
-        (str(root / "bible_brain" / "data" / "*.bb-lang"), "bible_brain/data"),
+        (str(root / "bible_brain" / "data" / "STEP-TAGNT-AR3.bb-lang"), "bible_brain/data"),
+        (str(root / "bible_brain" / "data" / "STEP-TAHOT-GEN3.bb-lang"), "bible_brain/data"),
+        (str(root / "bible_brain" / "data" / "STEP-TAHOT-ARAMAIC2.bb-lang"), "bible_brain/data"),
         (str(root / "bible_brain" / "migrations" / "*.sql"), "bible_brain/migrations"),
         (str(root / "bible_brain" / "fonts" / "*.otf"), "bible_brain/fonts"),
         (str(root / "bible_brain" / "fonts" / "*.ttf"), "bible_brain/fonts"),
