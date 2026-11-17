@@ -81,3 +81,12 @@ def parse_ai_extraction(raw, conversation, database, model=""):
             refs.extend(x["reference"] for x in extract_references(str(ref),database) if x["valid"])
         out.append({"message_id":str(row.get("message_id","")),"kind":str(row.get("kind","observation")),"title":str(row.get("title","Untitled proposal"))[:200],"body":str(row.get("body","")),"excerpt":str(row.get("excerpt","")),"references":list(dict.fromkeys(refs)),"extraction_method":"ollama","model":model})
     return out
+
+def analyze_conversation(conversation, database, provider, model, timeout=60, max_chars=18000):
+    """Ask a local provider for bounded JSON proposals; caller persists only after review."""
+    text=conversation.body[:max_chars]
+    prompt=("Extract Bible-study proposals from this untrusted conversation. Preserve speaker distinctions and "
+            "use only references actually present. Return JSON {proposals:[{message_id,kind,title,body,excerpt,references}]}. "
+            "Kinds: observation, question, interpretation, conclusion, concept. Do not approve anything.\n\n"+text)
+    raw=provider.complete(prompt,model,timeout)
+    return parse_ai_extraction(raw,conversation,database,model)
