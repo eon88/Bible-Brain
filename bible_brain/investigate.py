@@ -1,6 +1,21 @@
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 from .meaning import MeaningEngine, OllamaProvider
+
+class InvestigationWorker(QObject):
+    finished = Signal(str)
+    failed = Signal(str)
+    progress = Signal(int, str)
+    def __init__(self, provider, prompt, model, timeout):
+        super().__init__(); self.provider=provider; self.prompt=prompt; self.model=model; self.timeout=timeout
+    def run(self):
+        try:
+            self.progress.emit(20, "Calling local model…")
+            raw=self.provider.complete(self.prompt, self.model, self.timeout)
+            self.progress.emit(100, "Model response received")
+            self.finished.emit(raw)
+        except Exception as error:
+            self.failed.emit(str(error))
 
 class InvestigatePanel(QWidget):
     navigateRequested = Signal(object)
@@ -9,7 +24,7 @@ class InvestigatePanel(QWidget):
         layout=QVBoxLayout(self); head=QHBoxLayout(); head.addWidget(QLabel("Investigate"),1); self.model=QComboBox(); self.model.setObjectName("aiModel"); head.addWidget(self.model); self.refresh_models(); layout.addLayout(head)
         self.question=QPlainTextEdit(); self.question.setObjectName("investigationQuestion"); self.question.setPlaceholderText("Ask a question about the selected Scripture or trace…"); self.question.setMaximumHeight(85); layout.addWidget(self.question)
         actions=QHBoxLayout(); actions.addWidget(self._button("Investigate selection",self._investigate)); actions.addWidget(self._button("Challenge",self._challenge)); actions.addWidget(self._button("Refresh models",self.refresh_models)); layout.addLayout(actions)
-        self.status=QLabel("Ready"); layout.addWidget(self.status)
+        self.status=QLabel("Ready"); layout.addWidget(self.status); self._thread=None; self._worker=None
         self.answer=QPlainTextEdit(); self.answer.setObjectName("investigationAnswer"); self.answer.setReadOnly(True); layout.addWidget(self.answer,2)
         self.evidence=QListWidget(); self.evidence.setObjectName("investigationEvidence"); self.evidence.itemDoubleClicked.connect(self._open_evidence); layout.addWidget(self.evidence,1)
         decisions=QHBoxLayout();
@@ -26,14 +41,31 @@ class InvestigatePanel(QWidget):
         if current and self.model.findText(current)>=0: self.model.setCurrentText(current)
     def _investigate(self):
         try:
-            self.status.setText("Retrieving evidence and asking the local model…"); self.answer.clear(); self.evidence.clear(); model=self.model.currentText()
+            self.status.setText("Retrieving evidence…"); self.answer.clear(); self.evidence.clear(); model=self.model.currentText()
             if model == "No local models available": model=""
-            self.investigation=self.engine.investigate(self.question.toPlainText(),self.selection,model=model)
+            question=self.question.toPlainText().strip()
+            if not question: raise ValueError("Ask a research question first.")
+            evidence=self.engine.retriever.retrieve(self.selection, query=question)
+            if not model:
+                models=self.engine.provider.models()
+                if not models: raise RuntimeError("No local AI model is available. Research retrieval remains available offline.")
+                model=models[0]
+            context="\n".join(f"[{i.source_id}] {i.kind} {i.reference or ''}: {i.text} (status={i.status})" for i in evidence)
+            prompt=f"Question: {question}\nMode: interpret. Interpret the evidence carefully.\n\nEvidence:\n{context}\n\nReturn JSON keys answer, observations, interpretation, challenges, unresolved, citations. Citations must use only source IDs or references in the evidence."
+            self._pending=(question,evidence,model); self._thread=QThread(self); self._worker=InvestigationWorker(self.engine.provider,prompt,model,60); self._worker.moveToThread(self._thread); self._thread.started.connect(self._worker.run); self._worker.progress.connect(lambda _,message:self.status.setText(message)); self._worker.finished.connect(self._worker_finished); self._worker.failed.connect(self._worker_failed); self._worker.finished.connect(self._thread.quit); self._worker.failed.connect(self._thread.quit); self._thread.finished.connect(self._thread_done); self._thread.start(); return
+        except (ValueError,RuntimeError) as error: self.status.setText(str(error)); self.show_error("Investigation unavailable",error)
+    def _worker_finished(self, raw):
+        try:
+            question,evidence,model=self._pending; self.investigation=self.engine.parse_response(question,evidence,raw,model)
             self.answer.setPlainText("Answer\n"+self.investigation.answer+"\n\nObservations\n"+self.investigation.observations+"\n\nInterpretation (provisional)\n"+self.investigation.interpretation+"\n\nChallenges\n"+self.investigation.challenges+"\n\nUnresolved\n"+self.investigation.unresolved)
             for item in self.investigation.evidence:
                 row=QListWidgetItem(f"{item.reference or item.title} · {item.kind} · {item.status}"); row.setData(Qt.ItemDataRole.UserRole,item); self.evidence.addItem(row)
             self.status.setText(f"Evidence retrieved: {len(self.investigation.evidence)} · not saved")
-        except (ValueError,RuntimeError) as error: self.status.setText(str(error)); self.show_error("Investigation unavailable",error)
+        except (ValueError,RuntimeError) as error: self._worker_failed(str(error))
+    def _worker_failed(self, message):
+        self.status.setText(message); self.show_error("Investigation unavailable", RuntimeError(message))
+    def _thread_done(self):
+        self._worker=None; self._thread.deleteLater(); self._thread=None
     def _challenge(self):
         current=self.question.toPlainText().strip(); self.question.setPlainText((current+"\n\nChallenge this interpretation and identify counterevidence.").strip()); self._investigate()
     def _save(self,status):

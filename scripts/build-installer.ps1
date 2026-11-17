@@ -90,7 +90,7 @@ $msi = Join-Path $output "Bible-Brain-Setup-$Version-x64$packageSuffix.msi"
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not harvest the application bundle.' }
 
 & (Join-Path $wix 'candle.exe') -nologo -arch x64 "-dAppSource=$application" "-dInternalSource=$internal" `
-    "-dAppVersion=$Version" "-dProductCode=$productCode" @scopeArguments -out "$intermediate\" $source $harvest
+    "-dAppVersion=$Version" "-dProductCode=$productCode" @scopeArguments -out ($intermediate + '\\') $source $harvest
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not compile the installer definition.' }
 
 & (Join-Path $wix 'light.exe') -nologo -ext WixUIExtension -spdb -out $msi `

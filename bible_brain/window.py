@@ -32,6 +32,7 @@ from .typography import load_fonts
 from .workspace import DATA_ERRORS, ResearchWorkspace, SelectBox, button, item_heading
 from .graph import GraphWorkspace
 from .investigate import InvestigatePanel
+from .lenses import LensPanel
 
 
 LOGGER = logging.getLogger(__name__)
@@ -91,6 +92,9 @@ class MainWindow(QMainWindow):
         self.investigate.navigateRequested.connect(self._open_reference)
         self.splitter.addWidget(self.investigate)
         self.investigate.hide()
+        self.lenses = LensPanel(session, self.notify, self.show_error)
+        self.splitter.addWidget(self.lenses)
+        self.lenses.hide()
         self.setCentralWidget(self.page)
 
         status = QStatusBar()
@@ -139,6 +143,11 @@ class MainWindow(QMainWindow):
         self.investigate_button.setCheckable(True)
         self.investigate_button.toggled.connect(self._toggle_investigate)
         layout.addWidget(self.investigate_button)
+        self.lenses_button = QPushButton("Lenses")
+        self.lenses_button.setObjectName("toggleLenses")
+        self.lenses_button.setCheckable(True)
+        self.lenses_button.toggled.connect(lambda checked: self.lenses.setVisible(checked))
+        layout.addWidget(self.lenses_button)
         layout.addWidget(button("Settings", "openSettings", self._show_settings, "quiet"))
         return header
 

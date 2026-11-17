@@ -23,8 +23,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 7
-MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql")
+SCHEMA_VERSION = 8
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql", "008_lenses_contradictions.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
@@ -717,6 +717,98 @@ class Database:
                 """INSERT INTO knowledge_reviews(id, object_id, relationship_id, status, reviewer, reason)
                    VALUES (?, ?, ?, ?, ?, ?)""", (uuid4().hex, object_id, relationship_id, status, reviewer, reason)
             )
+
+    # Bundle 06: explicit, user-controlled lenses, claims and contradiction records.
+    def create_lens(self, name, description="", purpose=""):
+        name = _require_name(name, "Lens name"); description = _require_text(description, "Lens description"); purpose = _require_text(purpose, "Lens purpose")
+        with _transaction(self._connection):
+            oid = self._insert_object("lens", name, description)
+            self._connection.execute("INSERT INTO lenses(object_id,purpose) VALUES(?,?)", (oid, purpose))
+            return oid
+
+    def lenses(self, include_archived=False):
+        return self._connection.execute("SELECT k.id,k.title,k.body,k.status,l.purpose,l.active,l.archived,k.created_at,k.updated_at FROM lenses l JOIN knowledge_objects k ON k.id=l.object_id WHERE (? OR l.archived=0) ORDER BY l.archived,l.active DESC,k.title COLLATE NOCASE", (include_archived,)).fetchall()
+
+    def lens(self, lens_id):
+        row = self._connection.execute("SELECT k.*,l.purpose,l.active,l.archived FROM lenses l JOIN knowledge_objects k ON k.id=l.object_id WHERE l.object_id=?", (lens_id,)).fetchone()
+        if row is None: raise ValueError("The lens no longer exists.")
+        return row
+
+    def update_lens(self, lens_id, name, description="", purpose=""):
+        name = _require_name(name, "Lens name"); description = _require_text(description, "Lens description"); purpose = _require_text(purpose, "Lens purpose")
+        with _transaction(self._connection):
+            old = self.lens(lens_id)
+            material = (name, description, purpose) != (old["title"], old["body"], old["purpose"])
+            self._connection.execute(f"UPDATE knowledge_objects SET title=?,body=?,status=CASE WHEN ? THEN 'draft' ELSE status END,reviewed_by=CASE WHEN ? THEN NULL ELSE reviewed_by END,reviewed_at=CASE WHEN ? THEN NULL ELSE reviewed_at END,updated_at={NOW} WHERE id=?", (name,description,material,material,material,lens_id))
+            self._connection.execute("UPDATE lenses SET purpose=? WHERE object_id=?", (purpose,lens_id))
+
+    def set_lens_active(self, lens_id, active=True):
+        self.lens(lens_id)
+        with _transaction(self._connection): self._connection.execute("UPDATE lenses SET active=? WHERE object_id=?", (int(bool(active)),lens_id))
+
+    def archive_lens(self, lens_id, archived=True):
+        self.lens(lens_id)
+        with _transaction(self._connection): self._connection.execute("UPDATE lenses SET archived=?,active=CASE WHEN ? THEN 0 ELSE active END WHERE object_id=?", (int(bool(archived)),bool(archived),lens_id))
+
+    def duplicate_lens(self, lens_id, name=None):
+        source = self.lens(lens_id); new_id = self.create_lens(name or f"{source['title']} (copy)", source["body"], source["purpose"])
+        for row in self.lens_assumptions(lens_id): self.create_lens_assumption(new_id, row["statement"], row["position"])
+        return new_id
+
+    def create_lens_assumption(self, lens_id, statement, position=0):
+        self.lens(lens_id); statement = _require_name(statement, "Lens assumption", 4000); _require_integer(position, "Assumption position", 0)
+        with _transaction(self._connection):
+            aid = self._insert_object("lens_assumption", statement[:200], statement)
+            self._connection.execute("INSERT INTO lens_assumptions(id,lens_id,statement,position) VALUES(?,?,?,?)", (aid,lens_id,statement,position))
+            self._insert_relationship(lens_id, aid, "lens_assumption", position=position)
+            return aid
+
+    def lens_assumptions(self, lens_id):
+        return self._connection.execute("SELECT la.*,k.status FROM lens_assumptions la JOIN knowledge_objects k ON k.id=la.id WHERE la.lens_id=? ORDER BY la.position,la.created_at", (lens_id,)).fetchall()
+
+    def update_lens_assumption(self, assumption_id, statement):
+        statement = _require_name(statement, "Lens assumption", 4000)
+        with _transaction(self._connection):
+            old = self._connection.execute("SELECT * FROM lens_assumptions WHERE id=?", (assumption_id,)).fetchone()
+            if old is None: raise ValueError("The lens assumption no longer exists.")
+            self._connection.execute("INSERT INTO lens_assumption_revisions(assumption_id,statement) VALUES(?,?)", (assumption_id,old["statement"]))
+            self._connection.execute(f"UPDATE lens_assumptions SET statement=?,updated_at={NOW} WHERE id=?", (statement,assumption_id))
+            self._connection.execute(f"UPDATE knowledge_objects SET title=?,body=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,updated_at={NOW} WHERE id=?", (statement[:200],statement,assumption_id))
+
+    def create_claim(self, statement, *, title=None, origin="user", source_detail=None):
+        statement = _require_name(statement, "Claim", 8000)
+        return self.create_knowledge_object("claim", title or statement[:200], statement, origin=origin, source_detail=source_detail)
+
+    def claims(self):
+        return self._connection.execute("SELECT * FROM knowledge_objects WHERE kind='claim' ORDER BY updated_at DESC").fetchall()
+
+    def create_contradiction(self, claim_a_id, claim_b_id, classification, reasoning="", alternatives=""):
+        allowed = {'supporting_evidence','challenging_evidence','interpretive_tension','possible_contradiction','demonstrated_incompatibility','unresolved_question','resolved_issue'}
+        if classification not in allowed: raise ValueError("Invalid contradiction classification.")
+        if claim_a_id == claim_b_id: raise ValueError("A claim cannot contradict itself.")
+        for a,b in ((claim_a_id,claim_b_id),(claim_b_id,claim_a_id)):
+            row=self._connection.execute("SELECT object_id FROM contradiction_records WHERE claim_a_id=? AND claim_b_id=?",(a,b)).fetchone()
+            if row: return row["object_id"]
+        self.knowledge_object(claim_a_id); self.knowledge_object(claim_b_id); reasoning=_require_text(reasoning,"Contradiction reasoning"); alternatives=_require_text(alternatives,"Alternatives")
+        with _transaction(self._connection):
+            oid=self._insert_object("contradiction", classification, reasoning)
+            self._connection.execute("INSERT INTO contradiction_records(object_id,claim_a_id,claim_b_id,classification,alternatives) VALUES(?,?,?,?,?)",(oid,claim_a_id,claim_b_id,classification,alternatives))
+            self._insert_relationship(claim_a_id,claim_b_id,"claim_conflict",reasoning)
+            self._connection.execute("INSERT INTO contradiction_revisions(contradiction_id,classification,reasoning,alternatives) VALUES(?,?,?,?)",(oid,classification,reasoning,alternatives))
+            return oid
+
+    def contradictions(self):
+        return self._connection.execute("SELECT c.*,k.title,k.body,k.status FROM contradiction_records c JOIN knowledge_objects k ON k.id=c.object_id ORDER BY k.updated_at DESC").fetchall()
+
+    def update_contradiction(self, contradiction_id, classification, reasoning, alternatives=""):
+        row=self._connection.execute("SELECT * FROM contradiction_records WHERE object_id=?",(contradiction_id,)).fetchone()
+        if row is None: raise ValueError("The contradiction record no longer exists.")
+        if classification not in {'supporting_evidence','challenging_evidence','interpretive_tension','possible_contradiction','demonstrated_incompatibility','unresolved_question','resolved_issue'}: raise ValueError("Invalid contradiction classification.")
+        reasoning=_require_text(reasoning,"Contradiction reasoning"); alternatives=_require_text(alternatives,"Alternatives")
+        with _transaction(self._connection):
+            self._connection.execute("INSERT INTO contradiction_revisions(contradiction_id,classification,reasoning,alternatives) VALUES(?,?,?,?)",(contradiction_id,classification,reasoning,alternatives))
+            self._connection.execute(f"UPDATE contradiction_records SET classification=?,alternatives=? WHERE object_id=?",(classification,alternatives,contradiction_id))
+            self._connection.execute(f"UPDATE knowledge_objects SET title=?,body=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,updated_at={NOW} WHERE id=?",(classification,reasoning,contradiction_id))
 
     def scripture_anchor(self, anchor: ScriptureAnchor) -> str:
         """Return the reusable graph object ID for a Scripture reference or phrase."""

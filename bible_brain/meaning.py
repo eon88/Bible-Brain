@@ -86,7 +86,7 @@ class ContextRetriever:
     def __init__(self, database):
         self.database = database
 
-    def retrieve(self, anchors=(), trace_id=None, query="", limit=24) -> list[EvidenceItem]:
+    def retrieve(self, anchors=(), trace_id=None, query="", limit=24, lens_id=None) -> list[EvidenceItem]:
         evidence: list[EvidenceItem] = []
         seen: set[str] = set()
         def add(item):
@@ -115,6 +115,13 @@ class ContextRetriever:
             for row in self.database.search_research(query):
                 if row["status"] in {"rejected", "parked"}: continue
                 add(EvidenceItem(row["id"], row["kind"], row["title"], row["body"], row["status"], None))
+        if lens_id:
+            lens = self.database.lens(lens_id)
+            if not lens["archived"]:
+                add(EvidenceItem(lens_id, "lens", lens["title"], f"Purpose: {lens['purpose']}\n{lens['body']}", lens["status"], None))
+                for assumption in self.database.lens_assumptions(lens_id):
+                    if assumption["status"] not in {"rejected", "parked"}:
+                        add(EvidenceItem(assumption["id"], "lens_assumption", "Assumption", assumption["statement"], assumption["status"], None))
         return evidence[:limit]
 
 
@@ -124,17 +131,21 @@ class MeaningEngine:
         self.provider = provider or OllamaProvider()
         self.retriever = ContextRetriever(database)
 
-    def investigate(self, question: str, anchors=(), trace_id=None, model="", timeout=60) -> Investigation:
+    def investigate(self, question: str, anchors=(), trace_id=None, model="", timeout=60, lens_id=None, mode="interpret") -> Investigation:
         question = question.strip()
         if not question: raise ValueError("Ask a research question first.")
-        evidence = self.retriever.retrieve(anchors, trace_id, question)
+        evidence = self.retriever.retrieve(anchors, trace_id, question, lens_id=lens_id)
         if not model:
             models = self.provider.models()
             if not models: raise RuntimeError("No local AI model is available. Research retrieval remains available offline.")
             model = models[0]
         context = "\n".join(f"[{i.source_id}] {i.kind} {i.reference or ''}: {i.text} (status={i.status})" for i in evidence)
-        prompt = f"Question: {question}\n\nEvidence:\n{context}\n\nReturn JSON keys answer, observations, interpretation, challenges, unresolved, citations. Citations must use only source IDs or references in the evidence."
+        instruction = "Interpret the evidence through the selected lens assumptions." if mode == "interpret" else "Test the selected lens assumptions; actively seek counterevidence, alternatives, and unresolved tensions."
+        prompt = f"Question: {question}\nMode: {mode}. {instruction}\n\nEvidence:\n{context}\n\nReturn JSON keys answer, observations, interpretation, challenges, unresolved, citations. Citations must use only source IDs or references in the evidence."
         raw = self.provider.complete(prompt, model, timeout)
+        return self.parse_response(question, evidence, raw, model)
+
+    def parse_response(self, question, evidence, raw, model):
         try: payload = json.loads(raw)
         except (TypeError, json.JSONDecodeError) as exc: raise RuntimeError("The AI returned malformed JSON; no research was saved.") from exc
         citations = payload.get("citations", [])
