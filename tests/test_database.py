@@ -233,6 +233,35 @@ class DatabaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.database.import_original_language(**{key: resource[key] for key in ("code", "language", "name", "license", "source_url")}, lexemes=resource["lexemes"], tokens=[{**resource["tokens"][0], "surface": "changed"}], morphologies=resource["morphologies"])
 
+    def test_cross_references_traces_and_structured_studies_survive_review_and_restore(self):
+        self.install((
+            ("GEN", "Genesis", 1, 3, 22, "Tree of life"),
+            ("REV", "Revelation", 66, 2, 7, "Tree of life"),
+            ("REV", "Revelation", 66, 22, 2, "Tree of life"),
+            ("REV", "Revelation", 66, 22, 14, "Blessed"),
+        ))
+        db = self.database
+        a = db.scripture_anchor(ScriptureAnchor("REV", 2, 7, "TEST", 0, 12))
+        b = db.scripture_anchor(ScriptureAnchor("REV", 22, 2))
+        c = db.scripture_anchor(ScriptureAnchor("REV", 22, 14))
+        d = db.scripture_anchor(ScriptureAnchor("GEN", 3, 22))
+        edge = db.create_relationship(a, b, "thematic_parallel", evidence="Restored access", source_uri="fixture")
+        self.assertEqual(db.create_relationship(a, b, "thematic_parallel", evidence="same edge"), edge)
+        db.review_knowledge(edge, "approved", "Reader", "Confirmed by study", relationship=True)
+        trace = db.create_trace("Tree of Life", "Lost and restored access", "#4f7d4a")
+        db.add_trace_member(trace, a); db.add_trace_member(trace, b); db.add_trace_member(trace, c); db.add_trace_member(trace, d)
+        self.assertEqual(len(db.trace_members(trace)), 4)
+        study = db.create_study("Tree of Life study", "Access", "Genesis loss", "How is access restored?", conclusions="Restoration", anchors=[ScriptureAnchor("REV", 2, 7, "TEST", 0, 12), ScriptureAnchor("REV", 22, 2)], trace_ids=[trace])
+        self.assertEqual(db.study(study)["summary"], "Access")
+        self.assertEqual(len(db.relationships(study)), 3)
+        backup = db.backup_to(self.directory / "graph-backup.sqlite3")
+        db.close()
+        with closing(Database(self.path)) as reopened:
+            self.assertEqual(len(reopened.trace_members(trace)), 4)
+            self.assertEqual(reopened.study(study)["conclusions"], "Restoration")
+            reopened.restore_from(backup)
+            self.assertEqual(reopened._connection.execute("SELECT status FROM knowledge_relationships WHERE id=?", (edge,)).fetchone()[0], "approved")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -173,6 +173,19 @@ class ChapterReader(QTextBrowser):
             anchors = self._verse_anchor(cursor)
         self.scriptureSelected.emit(anchors)
 
+    def highlight_verses(self, verses, color=None):
+        selections = []
+        wanted = set(verses)
+        for span in self.spans:
+            if span.number in wanted:
+                selection = QTextEdit.ExtraSelection()
+                selection.cursor = QTextCursor(self.document())
+                selection.cursor.setPosition(span.block_start)
+                selection.cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+                selection.format.setBackground(QColor(color or self.verse_highlight))
+                selections.append(selection)
+        self.setExtraSelections(selections)
+
     def select_anchor(self, anchor):
         span = next((span for span in self.spans if span.number == anchor.verse), None)
         if span is None:

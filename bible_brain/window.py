@@ -30,6 +30,7 @@ from .reader import ChapterReader
 from .session import APPEARANCES, TEXT_SIZES
 from .typography import load_fonts
 from .workspace import DATA_ERRORS, ResearchWorkspace, SelectBox, button, item_heading
+from .graph import GraphWorkspace
 
 
 LOGGER = logging.getLogger(__name__)
@@ -80,6 +81,11 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(1, 0)
         self.workspace.hide()
         layout.addWidget(self.splitter, 1)
+        self.graph = GraphWorkspace(session, self.notify, self.show_error)
+        self.graph.navigateRequested.connect(self._open_reference)
+        self.graph.traceChanged.connect(self._set_trace)
+        self.splitter.addWidget(self.graph)
+        self.graph.hide()
         self.setCentralWidget(self.page)
 
         status = QStatusBar()
@@ -118,6 +124,11 @@ class MainWindow(QMainWindow):
         self.research_button.setToolTip("Show or hide research (Ctrl+Shift+R)")
         self.research_button.toggled.connect(self._toggle_research)
         layout.addWidget(self.research_button)
+        self.explore_button = QPushButton("Explore")
+        self.explore_button.setObjectName("toggleExplore")
+        self.explore_button.setCheckable(True)
+        self.explore_button.toggled.connect(self._toggle_explore)
+        layout.addWidget(self.explore_button)
         layout.addWidget(button("Settings", "openSettings", self._show_settings, "quiet"))
         return header
 
@@ -214,6 +225,23 @@ class MainWindow(QMainWindow):
             else:
                 height = self.splitter.height()
                 self.splitter.setSizes([height * 2 // 5, height * 3 // 5])
+
+    def _toggle_explore(self, enabled):
+        self.graph.setVisible(enabled)
+        if enabled:
+            self.graph.set_selection(self.selection)
+
+    def _set_trace(self, trace_id):
+        if not trace_id:
+            self.reader.highlight_verses([])
+            return
+        verses = []
+        for row in self.database.trace_members(trace_id):
+            if row["verse_id"]:
+                book, chapter, verse = row["verse_id"].split(":")
+                if book == self.reader.book and int(chapter) == self.reader.chapter:
+                    verses.append(int(verse))
+        self.reader.highlight_verses(verses, "#e8d7a5")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -313,6 +341,7 @@ class MainWindow(QMainWindow):
     def _set_selection(self, anchors):
         self.selection = list(anchors)
         self.workspace.set_selection(self.selection)
+        self.graph.set_selection(self.selection)
         if anchors:
             label = self.format_anchor(anchors[0])
             if len(anchors) > 1:

@@ -22,8 +22,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 5
-MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql")
+SCHEMA_VERSION = 6
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
@@ -549,18 +549,100 @@ class Database:
         return relationship_id
 
     def create_relationship(self, from_id, to_id, kind, *, evidence="", origin="user", source_uri=None,
-                            source_detail=None) -> str:
+                            source_detail=None, position=0) -> str:
         if kind == "scripture_reference":
             raise ValueError("Use the note API to manage note attachments.")
         evidence = _require_text(evidence, "Relationship evidence")
         with _transaction(self._connection):
-            return self._insert_relationship(from_id, to_id, kind, evidence, origin, source_uri, source_detail)
+            existing = self._connection.execute("SELECT id FROM knowledge_relationships WHERE from_id=? AND type=? AND to_id=?", (from_id, kind, to_id)).fetchone()
+            if existing is not None:
+                return existing["id"]
+            return self._insert_relationship(from_id, to_id, kind, evidence, origin, source_uri, source_detail, position)
 
     def relationships(self, object_id: str) -> list[sqlite3.Row]:
         return self._connection.execute(
             """SELECT * FROM knowledge_relationships WHERE from_id = ? OR to_id = ?
                ORDER BY created_at, id""", (object_id, object_id)
         ).fetchall()
+
+    def update_relationship(self, relationship_id, *, kind=None, evidence=None, source_uri=None, source_detail=None) -> None:
+        relationship_id = _require_name(relationship_id, "Relationship identifier")
+        with _transaction(self._connection):
+            row = self._connection.execute("SELECT * FROM knowledge_relationships WHERE id = ?", (relationship_id,)).fetchone()
+            if row is None:
+                raise ValueError("The connection no longer exists.")
+            kind = row["type"] if kind is None else _require_name(kind, "Connection type", 80)
+            if kind == "scripture_reference":
+                raise ValueError("Scripture note attachments are managed by note history.")
+            if self._connection.execute("SELECT 1 FROM relationship_types WHERE code = ?", (kind,)).fetchone() is None:
+                raise ValueError("Unknown connection type.")
+            evidence = row["evidence"] if evidence is None else _require_text(evidence, "Relationship evidence")
+            self._connection.execute(f"UPDATE knowledge_relationships SET type=?, evidence=?, source_uri=?, source_detail=?, updated_at={NOW} WHERE id=?", (kind, evidence, source_uri, source_detail, relationship_id))
+
+    def knowledge_connections(self, object_id: str) -> list[sqlite3.Row]:
+        return self._connection.execute("""SELECT r.*, a1.verse_id AS from_verse, a2.verse_id AS to_verse,
+            k1.title AS from_title, k2.title AS to_title
+            FROM knowledge_relationships r
+            JOIN knowledge_objects k1 ON k1.id=r.from_id JOIN knowledge_objects k2 ON k2.id=r.to_id
+            LEFT JOIN scripture_anchors a1 ON a1.object_id=r.from_id LEFT JOIN scripture_anchors a2 ON a2.object_id=r.to_id
+            WHERE r.from_id=? OR r.to_id=? ORDER BY r.created_at, r.id""", (object_id, object_id)).fetchall()
+
+    def create_trace(self, title, description="", color="#8a402c", position=0) -> str:
+        title = _require_name(title, "Trace name")
+        description = _require_text(description, "Trace description")
+        color = _require_name(color, "Trace colour", 20)
+        _require_integer(position, "Trace position", 0)
+        with _transaction(self._connection):
+            object_id = self._insert_object("trace", title, description)
+            self._connection.execute("INSERT INTO traces(object_id, description, color, position) VALUES (?,?,?,?)", (object_id, description, color, position))
+            return object_id
+
+    def traces(self):
+        return self._connection.execute("SELECT k.id, k.title, t.description, t.color, t.position, k.status FROM traces t JOIN knowledge_objects k ON k.id=t.object_id ORDER BY t.position, k.title COLLATE NOCASE, k.id").fetchall()
+
+    def update_trace(self, trace_id, title, description, color, position=0) -> None:
+        title = _require_name(title, "Trace name"); description = _require_text(description, "Trace description"); color = _require_name(color, "Trace colour", 20); _require_integer(position, "Trace position", 0)
+        with _transaction(self._connection):
+            if self._connection.execute("SELECT 1 FROM traces WHERE object_id=?", (trace_id,)).fetchone() is None: raise ValueError("The trace no longer exists.")
+            self._connection.execute(f"UPDATE knowledge_objects SET title=?, body=?, updated_at={NOW} WHERE id=?", (title, description, trace_id))
+            self._connection.execute("UPDATE traces SET description=?, color=?, position=? WHERE object_id=?", (description, color, position, trace_id))
+
+    def add_trace_member(self, trace_id, member_id, position=0) -> str:
+        _require_integer(position, "Trace member position", 0)
+        if self.knowledge_object(trace_id)["kind"] != "trace": raise ValueError("The source object is not a trace.")
+        if self._connection.execute("SELECT 1 FROM knowledge_objects WHERE id=?", (member_id,)).fetchone() is None: raise ValueError("The trace member no longer exists.")
+        return self.create_relationship(trace_id, member_id, "trace_member", position=position)
+
+    def trace_members(self, trace_id):
+        return self._connection.execute("""SELECT r.id AS relationship_id, r.position, r.status, k.id, k.kind, k.title,
+            a.verse_id FROM knowledge_relationships r JOIN knowledge_objects k ON k.id=r.to_id
+            LEFT JOIN scripture_anchors a ON a.object_id=k.id WHERE r.from_id=? AND r.type='trace_member' ORDER BY r.position, r.created_at""", (trace_id,)).fetchall()
+
+    def create_study(self, title, summary="", observations="", questions="", interpretations="", conclusions="", folder_id=None, anchors=(), trace_ids=(), label_ids=None) -> str:
+        title = _require_name(title, "Study title")
+        fields = [_require_text(x, label) for x, label in ((summary,"Summary"),(observations,"Observations"),(questions,"Questions"),(interpretations,"Interpretations"),(conclusions,"Conclusions"))]
+        label_ids = [] if label_ids is None else list(label_ids)
+        with _transaction(self._connection):
+            self._require_folder(folder_id)
+            object_id = self._insert_object("study", title, "\n\n".join(x for x in fields if x))
+            self._connection.execute("INSERT INTO notes(object_id, folder_id) VALUES (?,?)", (object_id, folder_id))
+            self._connection.execute("INSERT INTO studies(object_id, summary, observations, questions, interpretations, conclusions) VALUES (?,?,?,?,?,?)", (object_id, *fields))
+            anchor_ids = [self._anchor_id(anchor) for anchor in anchors]
+            self._replace_note_anchors(object_id, anchor_ids)
+            for trace_id in trace_ids: self._insert_relationship(object_id, trace_id, "study_related")
+            self._replace_note_labels(object_id, label_ids)
+            self._snapshot_note(object_id)
+            return object_id
+
+    def studies(self, folder_id=None):
+        return self._connection.execute("""SELECT k.id, k.title, s.summary, n.folder_id, k.status, k.created_at, k.updated_at
+            FROM studies s JOIN knowledge_objects k ON k.id=s.object_id JOIN notes n ON n.object_id=s.object_id
+            WHERE n.folder_id IS ? ORDER BY k.updated_at DESC, k.title COLLATE NOCASE""", (folder_id,)).fetchall()
+
+    def study(self, study_id):
+        row = self._connection.execute("SELECT k.id,k.title,n.folder_id,k.status,k.created_at,k.updated_at,s.* FROM studies s JOIN knowledge_objects k ON k.id=s.object_id JOIN notes n ON n.object_id=s.object_id WHERE s.object_id=?", (study_id,)).fetchone()
+        if row is None: raise ValueError("The study no longer exists.")
+        return row
 
     def review_knowledge(self, item_id, status, reviewer, reason, *, relationship=False) -> None:
         """Record an explicit user decision and apply it atomically to the item."""

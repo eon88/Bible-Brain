@@ -2,6 +2,28 @@
 
 ## Bundle 01
 
+## Bundle 03: Knowledge graph
+
+Cross-references reuse `knowledge_relationships` between stable Scripture-anchor
+objects. The relationship type records the user's classification and `evidence`,
+`source_uri` and `source_detail` preserve the basis for the connection. A unique
+`(from_id, type, to_id)` constraint plus the application-level idempotent insert
+prevents accidental duplicates. Review decisions remain journaled in
+`knowledge_reviews`; Keep maps to `approved`, while Investigate and Park remain
+explicitly non-confirmatory states.
+
+Traces are `knowledge_objects(kind='trace')` with a `traces` metadata row and ordered
+`trace_member` edges. A trace can contain Scripture anchors, studies or any future
+knowledge object, and a member may belong to multiple traces. The reader's Trace mode
+uses the stable anchor IDs to highlight members in the active chapter; disabling the
+mode removes those highlights.
+
+Studies are `knowledge_objects(kind='study')` with a `studies` row containing summary,
+observations, questions, interpretations and conclusions. They also use the existing
+folder, label, anchor, revision and relationship infrastructure. Manual editing is
+implemented; automated conversation processing and AI discovery are intentionally
+deferred.
+
 The Windows app runs a single Qt Widgets process. `window` and `reader` handle presentation. `session` manages local preferences, the active database, import and recovery. `datasets` validates the translation interchange envelope. `database` and its SQL migrations depend on the Python standard library and have no dependency on Qt. SQLite is the source of truth for Scripture and research. The application opens files directly and starts no HTTP server.
 
 SQLite stores Scripture addresses as USFM book codes, `BOOK:chapter` chapter IDs and `BOOK:chapter:verse` verse IDs. An edition links its code to the shared verse address and its own immutable text. The import validates the whole translation, installs it atomically and seals the edition. A reimport of the same edition is idempotent. A different edition requires its own identifier. The same-address model supports Bundle 01 datasets with compatible verse numbering. A future versification mapping will be needed to align differently numbered, split or merged verses.
