@@ -39,6 +39,11 @@ counts, and any references omitted because the active Bible versification has no
 matching canonical verse. Those omissions are reported in the package manifest rather
 than merged into another textual tradition.
 
+The Windows build bundles the verified Greek, Hebrew and Aramaic packages. A new
+default local profile installs them on first launch, so original-language lookup is
+available immediately after installation. Custom databases can install the same
+packages from Settings.
+
 ```json
 {
   "format": 1,
