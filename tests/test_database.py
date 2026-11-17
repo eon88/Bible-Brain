@@ -1,5 +1,6 @@
 """Persistence tests use synthetic record values, never an installed Bible edition."""
 
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -213,6 +214,24 @@ class DatabaseTests(unittest.TestCase):
                 db.restore_from(backup)
         self.assertEqual(db.note(note)["body"], "Keep this")
         db.check_integrity()
+
+    def test_original_language_import_is_separate_from_translation_alignment(self):
+        self.install()
+        resource = {
+            "code": "STEP-DEMO-EL", "language": "el", "name": "STEP Bible Greek demo",
+            "license": "CC BY 4.0", "source_url": "https://github.com/STEPBible/STEPBible-Data",
+            "lexemes": [{"strongs": "G0001", "lemma": "ἄλφα", "transliteration": "alpha", "definition": "the first letter"}],
+            "morphologies": [{"code": "N", "label": "Noun", "description": "nominal form"}],
+            "tokens": [{"book": "GEN", "chapter": 1, "verse": 1, "ordinal": 0, "surface": "ἄλφα", "strongs": "G0001", "morphology": "N"}],
+        }
+        path = self.directory / "greek.json"
+        path.write_text(json.dumps(resource, ensure_ascii=False), encoding="utf-8")
+        self.assertEqual(self.database.import_original_language(**{key: resource[key] for key in ("code", "language", "name", "license", "source_url")}, lexemes=resource["lexemes"], tokens=resource["tokens"], morphologies=resource["morphologies"]), 1)
+        token = self.database.original_tokens("GEN", 1, 1)[0]
+        self.assertEqual((token["strongs"], token["lemma"], token["morphology_label"]), ("G0001", "ἄλφα", "Noun"))
+        self.assertEqual(len(self.database.lexeme_occurrences("G0001")), 1)
+        with self.assertRaises(ValueError):
+            self.database.import_original_language(**{key: resource[key] for key in ("code", "language", "name", "license", "source_url")}, lexemes=resource["lexemes"], tokens=[{**resource["tokens"][0], "surface": "changed"}], morphologies=resource["morphologies"])
 
 
 if __name__ == "__main__":

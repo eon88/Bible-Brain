@@ -178,6 +178,7 @@ class MainWindow(QMainWindow):
         selection_layout.addWidget(self.selection_label, 1)
         clear = button("Clear", "clearSelection", self._clear_selection, "quiet")
         selection_layout.addWidget(clear)
+        selection_layout.addWidget(button("Original language", "originalLanguage", self._show_original_language, "quiet"))
         selection_layout.addWidget(button("New note", "newSelectionNote", self._note_from_selection, "primary"))
         layout.addWidget(self.selection_bar)
         self.selection_bar.hide()
@@ -326,6 +327,39 @@ class MainWindow(QMainWindow):
         self.reader.setExtraSelections([])
         self._set_selection([])
 
+    def _show_original_language(self):
+        if not self.selection:
+            return
+        rows = []
+        seen = set()
+        for anchor in self.selection:
+            for row in self.database.original_tokens(anchor.book, anchor.chapter, anchor.verse):
+                if row["id"] not in seen:
+                    seen.add(row["id"]); rows.append(row)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Original-language information")
+        dialog.resize(720, 460)
+        layout = QVBoxLayout(dialog)
+        if not rows:
+            layout.addWidget(QLabel("No original-language resource is installed for this passage.\n"
+                                    "Import a licensed Bible Brain original-language JSON resource in Settings."))
+        else:
+            note = QLabel("Dictionary definitions are lexical data. Contextual meaning is not inferred here; "
+                          "record and evaluate contextual conclusions in Research notes.")
+            note.setWordWrap(True); layout.addWidget(note)
+            text = QTextBrowser(); text.setOpenLinks(False)
+            lines = []
+            for row in rows:
+                morphology = row["morphology_label"] or row["morphology_code"] or "Not supplied"
+                definition = row["dictionary_definition"] or "No dictionary definition supplied"
+                lines.append(f"{row['verse_id']} · {row['ordinal'] + 1}. {row['surface']}  —  {row['strongs']}\n"
+                             f"Lemma: {row['lemma']}  | Transliteration: {row['transliteration']}\n"
+                             f"Form: {morphology}\nDictionary definition: {definition}\n")
+            text.setPlainText("\n".join(lines)); layout.addWidget(text)
+        controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        controls.rejected.connect(dialog.reject); controls.accepted.connect(dialog.accept); layout.addWidget(controls)
+        dialog.exec()
+
     def _note_from_selection(self):
         self.research_button.setChecked(True)
         self.workspace.new_note(anchors=self.selection)
@@ -445,6 +479,7 @@ class MainWindow(QMainWindow):
         backup.addWidget(button("Restore…", "restoreDatabase", self._restore_backup))
         layout.addLayout(backup)
         layout.addWidget(button("Import translation…", "importTranslation", self._import_translation))
+        layout.addWidget(button("Import original-language resource…", "importOriginalLanguage", self._import_original_language))
 
         layout.addSpacing(10)
         controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -496,6 +531,18 @@ class MainWindow(QMainWindow):
                 self.notify(f"Imported {count:,} verse addresses" if count else "Translation already installed")
             except DATA_ERRORS as error:
                 self.show_error("Could not import the translation", error)
+
+    def _import_original_language(self):
+        chosen, _ = QFileDialog.getOpenFileName(
+            self._dialog_parent(), "Import licensed original-language resource", "",
+            "Bible Brain original-language dataset (*.json *.json.gz);;All files (*)"
+        )
+        if chosen:
+            try:
+                count = self.session.import_original_language(Path(chosen))
+                self.notify(f"Imported {count:,} original-language tokens" if count else "Resource already installed")
+            except DATA_ERRORS as error:
+                self.show_error("Could not import the original-language resource", error)
 
     def _create_backup(self):
         default = self.session.database_path.parent / "Bible Brain backup.sqlite3"

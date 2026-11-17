@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from .database import Database
-from .datasets import BUNDLED_WEB, import_dataset
+from .datasets import BUNDLED_WEB, import_dataset, import_original_language
 
 logger = logging.getLogger(__name__)
 APPEARANCES = ("System", "Light", "Dark")
@@ -136,6 +136,11 @@ class Session:
     def import_dataset(self, path: Path) -> int:
         count = import_dataset(self.database, path)
         logger.info("Translation import completed (%d new addresses)", count)
+        return count
+
+    def import_original_language(self, path: Path) -> int:
+        count = import_original_language(self.database, path)
+        logger.info("Original-language import completed (%d tokens)", count)
         return count
 
     def backup(self, path: Path) -> None:

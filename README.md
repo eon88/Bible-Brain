@@ -20,6 +20,14 @@ The packaged app includes Python, Qt and Scripture. It opens without an internet
 
 See [Scripture datasets](docs/SCRIPTURE.md) for the publisher’s licence, provenance and the UTF-8 `.json` / `.json.gz` import format. See [Third-party notices](docs/THIRD_PARTY.md) for the packaged runtime licences.
 
+## Original languages (Bundle 02)
+
+Settings can import licensed Hebrew (`he`), Greek (`el`) and biblical Aramaic (`arc`)
+resources. Imported tokens remain separate from translation alignment and expose
+Strong's identifiers, lemmas, transliterations, morphology, dictionary definitions and
+occurrences from the selected verse. See [Original languages](docs/ORIGINAL_LANGUAGES.md)
+for the validated JSON envelope and STEPBible CC BY 4.0 source evaluation.
+
 ## Develop and build
 
 From the repository root in PowerShell, using 64-bit Python 3.12 and Git:
@@ -38,4 +46,4 @@ Use `-m bible_brain --data-dir 'C:\path\to\test-profile'` to launch with a separ
 
 ## Scope
 
-Bundle 01 includes the Scripture reader, shared graph storage and research workspace basics. The bundled edition uses verse text and omits publisher notes, headings and paragraph layout. The next bundle is Original Languages, starting with one licensed Greek text and verified Strong’s and morphology mappings, then expanding to Hebrew and Aramaic. AI, advanced graph tools and Android synchronization are later bundles.
+Bundle 01 includes the Scripture reader, shared graph storage and research workspace basics. Bundle 02 adds an offline importer and lookup layer for licensed original-language resources; it does not fabricate a word-for-word English alignment. AI, advanced graph tools and Android synchronization are later bundles.

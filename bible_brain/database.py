@@ -22,8 +22,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 1
-MIGRATIONS = ("001_foundation.sql",)
+SCHEMA_VERSION = 2
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
@@ -175,6 +175,8 @@ def _verify_database(connection: sqlite3.Connection) -> None:
         raise ValueError("The Bible Brain database failed its SQLite integrity check.")
     if connection.execute("SELECT 1 FROM translations WHERE sealed_at IS NULL LIMIT 1").fetchone():
         raise ValueError("The database contains an unfinished Scripture import.")
+    if connection.execute("SELECT 1 FROM language_resources WHERE sealed_at IS NULL LIMIT 1").fetchone():
+        raise ValueError("The database contains an unfinished original-language import.")
 
 
 class Database:
@@ -301,6 +303,89 @@ class Database:
             """SELECT code, name, language, license, source_url FROM translations
                WHERE sealed_at IS NOT NULL ORDER BY name COLLATE NOCASE, code"""
         ).fetchall()
+
+    def import_original_language(self, *, code, language, name, license, source_url,
+                                 lexemes, tokens, morphologies=()) -> int:
+        """Atomically import a verifiable lexicon and verse token map.
+
+        Tokens deliberately point to canonical verse IDs, never to translation text
+        offsets; alignment is therefore an explicit future layer rather than an
+        assumption made by this importer.
+        """
+        if not isinstance(code, str) or CODE_PATTERN.fullmatch(code) is None:
+            raise ValueError("Original-language resource code is invalid.")
+        if language not in {"he", "el", "arc"}:
+            raise ValueError("Language must be Hebrew (he), Greek (el), or Aramaic (arc).")
+        metadata = (_require_name(name, "Resource title"), _require_name(license, "Licence", 2_000),
+                    _require_name(source_url, "Source", 2_000))
+        if not isinstance(lexemes, list) or not lexemes:
+            raise ValueError("The resource must contain lexemes.")
+        if not isinstance(tokens, list) or not tokens:
+            raise ValueError("The resource must contain verse tokens.")
+        lexeme_rows = {}
+        for row in lexemes:
+            if not isinstance(row, dict):
+                raise ValueError("Each lexeme must be an object.")
+            strongs = _require_name(row.get("strongs"), "Strong's identifier", 40)
+            lemma = _require_name(row.get("lemma"), "Lemma", 300)
+            lexeme_rows[strongs] = (lemma, _require_text(row.get("transliteration", ""), "Transliteration"),
+                                    _require_text(row.get("definition", ""), "Dictionary definition"))
+        morphology_rows = []
+        for row in morphologies:
+            if not isinstance(row, dict):
+                raise ValueError("Each morphology must be an object.")
+            morphology_rows.append((_require_name(row.get("code"), "Morphology code", 80),
+                                    _require_name(row.get("label"), "Morphology label", 300),
+                                    _require_text(row.get("description", ""), "Morphology description")))
+        token_rows = []
+        seen = set()
+        for row in tokens:
+            if not isinstance(row, dict):
+                raise ValueError("Each token must be an object.")
+            book = row.get("book"); chapter = row.get("chapter"); verse = row.get("verse")
+            ordinal = row.get("ordinal"); strongs = row.get("strongs")
+            if not isinstance(book, str) or BOOK_PATTERN.fullmatch(book) is None:
+                raise ValueError("Token book must be a USFM code.")
+            _require_integer(chapter, "Token chapter"); _require_integer(verse, "Token verse")
+            _require_integer(ordinal, "Token ordinal", 0)
+            if strongs not in lexeme_rows:
+                raise ValueError(f"Token refers to missing lexeme {strongs!r}.")
+            surface = _require_name(row.get("surface"), "Token surface", 500)
+            key = (book, chapter, verse, ordinal)
+            if key in seen: raise ValueError("Duplicate original-language token address.")
+            seen.add(key)
+            token_rows.append((book, chapter, verse, ordinal, surface, strongs, row.get("morphology")))
+        digest = sha256(json.dumps([code, language, metadata, lexemes, tokens, list(morphologies)], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        with _transaction(self._connection):
+            existing = self._connection.execute("SELECT content_hash FROM language_resources WHERE code = ?", (code,)).fetchone()
+            if existing:
+                if existing["content_hash"] != digest:
+                    raise ValueError(f"Original-language resource {code} is already installed with different content.")
+                return 0
+            resource_id = uuid4().hex
+            self._connection.execute("INSERT INTO language_resources(id, code, language, name, license, source_url, content_hash) VALUES (?,?,?,?,?,?,?)", (resource_id, code, language, *metadata, digest))
+            for morph in morphology_rows:
+                self._connection.execute("INSERT OR IGNORE INTO morphologies(language, code, label, description) VALUES (?,?,?,?)", (language, *morph))
+            for strongs, (lemma, transliteration, definition) in lexeme_rows.items():
+                self._connection.execute("INSERT INTO lexemes(id, resource_id, strongs, language, lemma, transliteration, dictionary_definition) VALUES (?,?,?,?,?,?,?)", (uuid4().hex, resource_id, strongs, language, lemma, transliteration, definition))
+            for book, chapter, verse, ordinal, surface, strongs, morphology in token_rows:
+                lexeme_id = self._connection.execute("SELECT id FROM lexemes WHERE resource_id=? AND strongs=?", (resource_id, strongs)).fetchone()[0]
+                self._connection.execute("INSERT INTO original_tokens(id, resource_id, verse_id, ordinal, surface, lexeme_id, morphology_code) VALUES (?,?,?,?,?,?,?)", (uuid4().hex, resource_id, f"{book}:{chapter}:{verse}", ordinal, surface, lexeme_id, morphology))
+            self._connection.execute(f"UPDATE language_resources SET sealed_at = {NOW} WHERE id = ?", (resource_id,))
+        return len(token_rows)
+
+    def language_resources(self):
+        return self._connection.execute("SELECT code, language, name, license, source_url FROM language_resources WHERE sealed_at IS NOT NULL ORDER BY name").fetchall()
+
+    def original_tokens(self, book, chapter, verse):
+        return self._connection.execute("""SELECT ot.*, l.strongs, l.lemma, l.transliteration, l.dictionary_definition,
+            m.label AS morphology_label, m.description AS morphology_description
+            FROM original_tokens ot JOIN lexemes l ON l.id=ot.lexeme_id
+            LEFT JOIN morphologies m ON m.language=l.language AND m.code=ot.morphology_code
+            WHERE ot.verse_id=? ORDER BY ot.ordinal""", (f"{book}:{chapter}:{verse}",)).fetchall()
+
+    def lexeme_occurrences(self, strongs):
+        return self._connection.execute("SELECT ot.verse_id, ot.ordinal, ot.surface, lr.code AS resource_code FROM original_tokens ot JOIN lexemes l ON l.id=ot.lexeme_id JOIN language_resources lr ON lr.id=ot.resource_id WHERE l.strongs=? ORDER BY ot.verse_id, ot.ordinal", (strongs,)).fetchall()
 
     def books(self, translation: str) -> list[sqlite3.Row]:
         return self._connection.execute(
