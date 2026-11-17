@@ -23,8 +23,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 8
-MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql", "008_lenses_contradictions.sql")
+SCHEMA_VERSION = 9
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql", "008_lenses_contradictions.sql", "009_conversations.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
@@ -809,6 +809,55 @@ class Database:
             self._connection.execute("INSERT INTO contradiction_revisions(contradiction_id,classification,reasoning,alternatives) VALUES(?,?,?,?)",(contradiction_id,classification,reasoning,alternatives))
             self._connection.execute(f"UPDATE contradiction_records SET classification=?,alternatives=? WHERE object_id=?",(classification,alternatives,contradiction_id))
             self._connection.execute(f"UPDATE knowledge_objects SET title=?,body=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,updated_at={NOW} WHERE id=?",(classification,reasoning,contradiction_id))
+
+    def import_conversation(self, *, fingerprint, title, body, messages, source="local", source_date=None, metadata=None):
+        fingerprint = _require_name(fingerprint, "Conversation fingerprint", 128); title = _require_text(title or "", "Conversation title"); body = _require_text(body, "Conversation text")
+        metadata_json = json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True)
+        with _transaction(self._connection):
+            existing = self._connection.execute("SELECT id FROM conversations WHERE fingerprint=?", (fingerprint,)).fetchone()
+            if existing: return existing["id"], False
+            cid=uuid4().hex; self._connection.execute("INSERT INTO conversations(id,fingerprint,title,source,source_date,body,metadata) VALUES(?,?,?,?,?,?,?)",(cid,fingerprint,title,source,source_date,body,metadata_json))
+            for ordinal, message in enumerate(messages):
+                self._connection.execute("INSERT INTO conversation_messages(id,conversation_id,ordinal,speaker,body,source_id) VALUES(?,?,?,?,?,?)",(uuid4().hex,cid,ordinal,_require_name(message.get('speaker','unknown'), 'Speaker', 80),_require_text(message.get('body',''),'Message text'),_require_name(message.get('source_id',str(ordinal)), 'Message source', 200)))
+            return cid, True
+
+    def conversations(self):
+        return self._connection.execute("SELECT * FROM conversations ORDER BY created_at DESC").fetchall()
+
+    def conversation(self, conversation_id):
+        row=self._connection.execute("SELECT * FROM conversations WHERE id=?",(conversation_id,)).fetchone()
+        if row is None: raise ValueError("The conversation no longer exists.")
+        return row
+
+    def conversation_messages(self, conversation_id):
+        return self._connection.execute("SELECT * FROM conversation_messages WHERE conversation_id=? ORDER BY ordinal",(conversation_id,)).fetchall()
+
+    def create_conversation_proposal(self, *, conversation_id, message_id=None, kind, title, body, excerpt="", references=(), extraction_method="manual", model=None, status="draft", destination_folder_id=None):
+        self.conversation(conversation_id); title=_require_name(title,"Proposal title"); body=_require_text(body,"Proposal text"); excerpt=_require_text(excerpt,"Proposal excerpt")
+        if message_id:
+            resolved=self._connection.execute("SELECT id FROM conversation_messages WHERE conversation_id=? AND (id=? OR source_id=?)",(conversation_id,message_id,message_id)).fetchone()
+            message_id=resolved["id"] if resolved else None
+        refs_json=json.dumps(list(references),ensure_ascii=False,sort_keys=True); fingerprint=sha256(json.dumps([kind,title,body,excerpt,list(references)],ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+        with _transaction(self._connection):
+            existing=self._connection.execute("SELECT id FROM conversation_proposals WHERE conversation_id=? AND fingerprint=?",(conversation_id,fingerprint)).fetchone()
+            if existing: return existing["id"]
+            pid=uuid4().hex; self._connection.execute("INSERT INTO conversation_proposals(id,conversation_id,message_id,kind,title,body,excerpt,references_json,extraction_method,model,status,destination_folder_id,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(pid,conversation_id,message_id,kind,title,body,excerpt,refs_json,extraction_method,model,status,destination_folder_id,fingerprint)); return pid
+
+    def conversation_proposals(self, conversation_id, status=None):
+        if status is None: return self._connection.execute("SELECT * FROM conversation_proposals WHERE conversation_id=? ORDER BY rowid",(conversation_id,)).fetchall()
+        return self._connection.execute("SELECT * FROM conversation_proposals WHERE conversation_id=? AND status=? ORDER BY rowid",(conversation_id,status)).fetchall()
+
+    def review_conversation_proposal(self, proposal_id, status, reviewer="User", reason="Conversation review", *, title=None, body=None, folder_id=None):
+        if status not in REVIEW_STATUSES: raise ValueError("Invalid research decision.")
+        with _transaction(self._connection):
+            row=self._connection.execute("SELECT * FROM conversation_proposals WHERE id=?",(proposal_id,)).fetchone()
+            if row is None: raise ValueError("The conversation proposal no longer exists.")
+            self._connection.execute("UPDATE conversation_proposals SET status=?,title=COALESCE(?,title),body=COALESCE(?,body),destination_folder_id=COALESCE(?,destination_folder_id) WHERE id=?",(status,title,body,folder_id,proposal_id))
+            if status == "approved" and row["target_object_id"] is None:
+                oid=self._insert_object(row["kind"] if row["kind"] in {"observation","question","interpretation","conclusion","concept"} else "observation", title or row["title"], body or row["body"], "ai", source_detail=json.dumps({"conversation_id":row["conversation_id"],"proposal_id":proposal_id,"excerpt":row["excerpt"]}))
+                self._connection.execute("UPDATE conversation_proposals SET target_object_id=? WHERE id=?",(oid,proposal_id)); self._connection.execute("INSERT INTO knowledge_reviews(id,object_id,status,reviewer,reason) VALUES(?,?,?,?,?)",(uuid4().hex,oid,status,reviewer,reason))
+            elif row["target_object_id"]:
+                self._connection.execute("INSERT INTO knowledge_reviews(id,object_id,status,reviewer,reason) VALUES(?,?,?,?,?)",(uuid4().hex,row["target_object_id"],status,reviewer,reason))
 
     def scripture_anchor(self, anchor: ScriptureAnchor) -> str:
         """Return the reusable graph object ID for a Scripture reference or phrase."""

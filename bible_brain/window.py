@@ -33,6 +33,7 @@ from .workspace import DATA_ERRORS, ResearchWorkspace, SelectBox, button, item_h
 from .graph import GraphWorkspace
 from .investigate import InvestigatePanel
 from .lenses import LensPanel
+from .conversation_panel import ConversationPanel
 
 
 LOGGER = logging.getLogger(__name__)
@@ -95,6 +96,9 @@ class MainWindow(QMainWindow):
         self.lenses = LensPanel(session, self.notify, self.show_error)
         self.splitter.addWidget(self.lenses)
         self.lenses.hide()
+        self.conversation = ConversationPanel(session, self.notify, self.show_error)
+        self.splitter.addWidget(self.conversation)
+        self.conversation.hide()
         self.setCentralWidget(self.page)
 
         status = QStatusBar()
@@ -148,6 +152,11 @@ class MainWindow(QMainWindow):
         self.lenses_button.setCheckable(True)
         self.lenses_button.toggled.connect(lambda checked: self.lenses.setVisible(checked))
         layout.addWidget(self.lenses_button)
+        self.conversation_button = QPushButton("Process Conversation")
+        self.conversation_button.setObjectName("processConversation")
+        self.conversation_button.setCheckable(True)
+        self.conversation_button.toggled.connect(lambda checked: self.conversation.setVisible(checked))
+        layout.addWidget(self.conversation_button)
         layout.addWidget(button("Settings", "openSettings", self._show_settings, "quiet"))
         return header
 
