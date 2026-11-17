@@ -253,12 +253,14 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(len(db.trace_members(trace)), 4)
         study = db.create_study("Tree of Life study", "Access", "Genesis loss", "How is access restored?", conclusions="Restoration", anchors=[ScriptureAnchor("REV", 2, 7, "TEST", 0, 12), ScriptureAnchor("REV", 22, 2)], trace_ids=[trace])
         self.assertEqual(db.study(study)["summary"], "Access")
+        db.update_study(study, "Tree of Life study revised", "Access", "Genesis loss", "How is access restored?", conclusions="Restoration confirmed")
+        self.assertEqual(db.study(study)["conclusions"], "Restoration confirmed")
         self.assertEqual(len(db.relationships(study)), 3)
         backup = db.backup_to(self.directory / "graph-backup.sqlite3")
         db.close()
         with closing(Database(self.path)) as reopened:
             self.assertEqual(len(reopened.trace_members(trace)), 4)
-            self.assertEqual(reopened.study(study)["conclusions"], "Restoration")
+            self.assertEqual(reopened.study(study)["conclusions"], "Restoration confirmed")
             reopened.restore_from(backup)
             self.assertEqual(reopened._connection.execute("SELECT status FROM knowledge_relationships WHERE id=?", (edge,)).fetchone()[0], "approved")
 

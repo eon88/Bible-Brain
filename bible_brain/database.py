@@ -644,6 +644,16 @@ class Database:
         if row is None: raise ValueError("The study no longer exists.")
         return row
 
+    def update_study(self, study_id, title, summary="", observations="", questions="", interpretations="", conclusions="") -> None:
+        title = _require_name(title, "Study title")
+        fields = [_require_text(x, label) for x, label in ((summary,"Summary"),(observations,"Observations"),(questions,"Questions"),(interpretations,"Interpretations"),(conclusions,"Conclusions"))]
+        with _transaction(self._connection):
+            if self._connection.execute("SELECT 1 FROM studies WHERE object_id=?", (study_id,)).fetchone() is None: raise ValueError("The study no longer exists.")
+            body = "\n\n".join(x for x in fields if x)
+            self._connection.execute(f"UPDATE knowledge_objects SET title=?, body=?, updated_at={NOW} WHERE id=?", (title, body, study_id))
+            self._connection.execute("UPDATE studies SET summary=?, observations=?, questions=?, interpretations=?, conclusions=? WHERE object_id=?", (*fields, study_id))
+            self._snapshot_note(study_id)
+
     def review_knowledge(self, item_id, status, reviewer, reason, *, relationship=False) -> None:
         """Record an explicit user decision and apply it atomically to the item."""
         if status not in REVIEW_STATUSES:
