@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="$(var.ProductCode)" Name="Bible Brain" Language="1033" Version="$(var.AppVersion)"
+           Manufacturer="Bible Brain" UpgradeCode="D86B0212-288A-43C1-99C6-BCCB7729C96E">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of Bible Brain is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Bible Brain">
+          <Directory Id="INTERNALFOLDER" Name="_internal" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="BibleBrainPrograms" Name="Bible Brain" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="BibleBrainExecutable" Guid="*">
+        <File Id="BibleBrainExeFile" Source="$(var.AppSource)\Bible Brain.exe" KeyPath="yes">
+          <Shortcut Id="BibleBrainStartShortcut" Directory="BibleBrainPrograms"
+                    Name="Bible Brain" Advertise="yes" WorkingDirectory="INSTALLFOLDER" />
+          <Shortcut Id="BibleBrainDesktopShortcut" Directory="DesktopFolder"
+                    Name="Bible Brain" Advertise="yes" WorkingDirectory="INSTALLFOLDER" />
+        </File>
+        <RemoveFolder Id="RemoveBibleBrainPrograms" Directory="BibleBrainPrograms" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="BibleBrainApplication" Title="Bible Brain" Level="1">
+      <ComponentGroupRef Id="BibleBrainFiles" />
+      <ComponentRef Id="BibleBrainExecutable" />
+    </Feature>
+
+    <UI>
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="WelcomeDlg" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return">1</Publish>
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Product>
+</Wix>

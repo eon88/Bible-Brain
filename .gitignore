@@ -1,0 +1,13 @@
+.venv/
+.build-tools/
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.log
