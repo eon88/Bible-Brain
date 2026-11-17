@@ -9,6 +9,7 @@ from functools import cache
 from hashlib import sha256
 import json
 import logging
+import mimetypes
 import os
 from pathlib import Path
 import re
@@ -22,14 +23,17 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 6
-MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql")
+SCHEMA_VERSION = 7
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
 CODE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 BOOK_PATTERN = re.compile(r"[A-Z0-9]{3}")
 REVIEW_STATUSES = {"approved", "investigate", "parked", "rejected"}
+
+def _media_type(path: Path) -> str:
+    return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,7 +581,8 @@ class Database:
             if self._connection.execute("SELECT 1 FROM relationship_types WHERE code = ?", (kind,)).fetchone() is None:
                 raise ValueError("Unknown connection type.")
             evidence = row["evidence"] if evidence is None else _require_text(evidence, "Relationship evidence")
-            self._connection.execute(f"UPDATE knowledge_relationships SET type=?, evidence=?, source_uri=?, source_detail=?, updated_at={NOW} WHERE id=?", (kind, evidence, source_uri, source_detail, relationship_id))
+            material = (kind, evidence, source_uri, source_detail) != (row["type"], row["evidence"], row["source_uri"], row["source_detail"])
+            self._connection.execute(f"UPDATE knowledge_relationships SET type=?, evidence=?, source_uri=?, source_detail=?, status=CASE WHEN ? THEN 'draft' ELSE status END, reviewed_by=CASE WHEN ? THEN NULL ELSE reviewed_by END, reviewed_at=CASE WHEN ? THEN NULL ELSE reviewed_at END, updated_at={NOW} WHERE id=?", (kind, evidence, source_uri, source_detail, material, material, material, relationship_id))
 
     def knowledge_connections(self, object_id: str) -> list[sqlite3.Row]:
         return self._connection.execute("""SELECT r.*, a1.verse_id AS from_verse, a2.verse_id AS to_verse,
@@ -644,13 +649,52 @@ class Database:
         if row is None: raise ValueError("The study no longer exists.")
         return row
 
+    def attach_file(self, object_id, path: str | Path) -> str:
+        path = Path(path)
+        if not path.is_file(): raise ValueError("The attachment file does not exist.")
+        data = path.read_bytes(); digest = sha256(data).hexdigest()
+        if self._connection.execute("SELECT 1 FROM knowledge_objects WHERE id=?", (object_id,)).fetchone() is None: raise ValueError("The research item no longer exists.")
+        with _transaction(self._connection):
+            existing = self._connection.execute("SELECT id FROM attachments WHERE object_id=? AND sha256=?", (object_id, digest)).fetchone()
+            if existing: return existing["id"]
+            attachment_id = uuid4().hex
+            self._connection.execute("INSERT INTO attachments(id, object_id, filename, media_type, size, sha256, data) VALUES (?,?,?,?,?,?,?)", (attachment_id, object_id, path.name, _media_type(path), len(data), digest, data))
+            return attachment_id
+
+    def attachments(self, object_id):
+        return self._connection.execute("SELECT id, object_id, filename, media_type, size, sha256, created_at FROM attachments WHERE object_id=? ORDER BY created_at, id", (object_id,)).fetchall()
+
+    def attachment_data(self, attachment_id):
+        row = self._connection.execute("SELECT * FROM attachments WHERE id=?", (attachment_id,)).fetchone()
+        if row is None: raise ValueError("The attachment no longer exists.")
+        return row
+
+    def delete_attachment(self, attachment_id):
+        with _transaction(self._connection):
+            self._connection.execute("DELETE FROM attachments WHERE id=?", (attachment_id,))
+
+    def search_research(self, query, *, folder_id=None, label_id=None, status=None, kind=None):
+        query = _require_text(query, "Search text").strip()
+        like = f"%{query}%"
+        return self._connection.execute("""SELECT DISTINCT k.id,k.kind,k.title,k.body,k.status,n.folder_id
+            FROM knowledge_objects k LEFT JOIN notes n ON n.object_id=k.id
+            LEFT JOIN note_labels nl ON nl.note_id=k.id
+            WHERE (?='' OR k.title LIKE ? OR k.body LIKE ?)
+              AND (? IS NULL OR n.folder_id IS ?)
+              AND (? IS NULL OR nl.label_id IS ?)
+              AND (? IS NULL OR k.status = ?)
+              AND (? IS NULL OR k.kind = ?)
+            ORDER BY k.updated_at DESC,k.title COLLATE NOCASE""", (query,like,like,folder_id,folder_id,label_id,label_id,status,status,kind,kind)).fetchall()
+
     def update_study(self, study_id, title, summary="", observations="", questions="", interpretations="", conclusions="") -> None:
         title = _require_name(title, "Study title")
         fields = [_require_text(x, label) for x, label in ((summary,"Summary"),(observations,"Observations"),(questions,"Questions"),(interpretations,"Interpretations"),(conclusions,"Conclusions"))]
         with _transaction(self._connection):
-            if self._connection.execute("SELECT 1 FROM studies WHERE object_id=?", (study_id,)).fetchone() is None: raise ValueError("The study no longer exists.")
+            current = self._connection.execute("SELECT k.title,k.status,s.* FROM studies s JOIN knowledge_objects k ON k.id=s.object_id WHERE s.object_id=?", (study_id,)).fetchone()
+            if current is None: raise ValueError("The study no longer exists.")
             body = "\n\n".join(x for x in fields if x)
-            self._connection.execute(f"UPDATE knowledge_objects SET title=?, body=?, updated_at={NOW} WHERE id=?", (title, body, study_id))
+            material = (title, *fields) != (current["title"], current["summary"], current["observations"], current["questions"], current["interpretations"], current["conclusions"])
+            self._connection.execute(f"UPDATE knowledge_objects SET title=?, body=?, status=CASE WHEN ? THEN 'draft' ELSE status END, reviewed_by=CASE WHEN ? THEN NULL ELSE reviewed_by END, reviewed_at=CASE WHEN ? THEN NULL ELSE reviewed_at END, updated_at={NOW} WHERE id=?", (title, body, material, material, material, study_id))
             self._connection.execute("UPDATE studies SET summary=?, observations=?, questions=?, interpretations=?, conclusions=? WHERE object_id=?", (*fields, study_id))
             self._snapshot_note(study_id)
 
@@ -769,9 +813,9 @@ class Database:
                 self._insert_relationship(note_id, anchor_id, "scripture_reference", position=position)
 
     def labels(self) -> list[sqlite3.Row]:
-        return self._connection.execute("SELECT id, name FROM labels ORDER BY name_key, id").fetchall()
+        return self._connection.execute("SELECT id, name, color FROM labels ORDER BY name_key, id").fetchall()
 
-    def create_label(self, name: str) -> str:
+    def create_label(self, name: str, color="#8a402c") -> str:
         name = _require_name(name, "Label name", 80)
         key = _name_key(name)
         with _transaction(self._connection):
@@ -779,8 +823,15 @@ class Database:
             if existing:
                 return existing["id"]
             label_id = uuid4().hex
-            self._connection.execute("INSERT INTO labels(id, name, name_key) VALUES (?, ?, ?)", (label_id, name, key))
+            self._connection.execute("INSERT INTO labels(id, name, name_key, color) VALUES (?, ?, ?, ?)", (label_id, name, key, _require_name(color, "Label colour", 20)))
             return label_id
+
+    def update_label(self, label_id, name, color="#8a402c") -> None:
+        name = _require_name(name, "Label name", 80); color = _require_name(color, "Label colour", 20)
+        with _transaction(self._connection):
+            if self._connection.execute("SELECT 1 FROM labels WHERE id=?", (label_id,)).fetchone() is None:
+                raise ValueError("The label no longer exists.")
+            self._connection.execute("UPDATE labels SET name=?, name_key=?, color=? WHERE id=?", (name, _name_key(name), color, label_id))
 
     def note_labels(self, note_id: str) -> list[sqlite3.Row]:
         return self._connection.execute(
@@ -803,10 +854,12 @@ class Database:
     def _snapshot_note(self, note_id: str) -> None:
         connection = self._connection
         result = connection.execute(
-            """INSERT INTO note_revisions(note_id, title, body, folder_id, folder_name)
-               SELECT n.object_id, k.title, k.body, n.folder_id, f.name
+            """INSERT INTO note_revisions(note_id, title, body, folder_id, folder_name, summary, observations, questions, interpretations, conclusions)
+               SELECT n.object_id, k.title, k.body, n.folder_id, f.name,
+                      COALESCE(s.summary,''), COALESCE(s.observations,''), COALESCE(s.questions,''),
+                      COALESCE(s.interpretations,''), COALESCE(s.conclusions,'')
                FROM notes n JOIN knowledge_objects k ON k.id = n.object_id
-               LEFT JOIN folders f ON f.id = n.folder_id WHERE n.object_id = ?""", (note_id,)
+               LEFT JOIN folders f ON f.id = n.folder_id LEFT JOIN studies s ON s.object_id = n.object_id WHERE n.object_id = ?""", (note_id,)
         )
         connection.execute(
             """INSERT INTO revision_anchors(revision_id, anchor_id, position)
@@ -873,7 +926,7 @@ class Database:
 
     def note_revisions(self, note_id: str) -> list[sqlite3.Row]:
         return self._connection.execute(
-            """SELECT id, title, body, folder_id, folder_name, created_at FROM note_revisions
+            """SELECT id, title, body, folder_id, folder_name, summary, observations, questions, interpretations, conclusions, created_at FROM note_revisions
                WHERE note_id = ? ORDER BY id DESC""", (note_id,)
         ).fetchall()
 
@@ -895,6 +948,8 @@ class Database:
             label_ids = {row[0] for row in connection.execute(
                 "SELECT label_id FROM revision_labels WHERE revision_id = ?", (revision_id,)
             )}
+            if connection.execute("SELECT 1 FROM studies WHERE object_id=?", (note_id,)).fetchone():
+                connection.execute("UPDATE studies SET summary=?, observations=?, questions=?, interpretations=?, conclusions=? WHERE object_id=?", (revision["summary"], revision["observations"], revision["questions"], revision["interpretations"], revision["conclusions"], note_id))
             self._update_note(current, revision["title"], revision["body"], folder_id, anchor_ids, label_ids)
 
     def _other_database_path(self, path) -> Path:

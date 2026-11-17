@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton, QTabWidget,
-    QVBoxLayout, QWidget, QInputDialog, QMessageBox)
+    QVBoxLayout, QWidget, QInputDialog, QMessageBox, QFileDialog)
 from .database import ScriptureAnchor
 from .workspace import DATA_ERRORS, button, item_heading
 
@@ -13,12 +13,17 @@ class GraphWorkspace(QWidget):
     traceChanged = Signal(object)
     def __init__(self, session, notify, show_error):
         super().__init__(); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None
-        layout=QVBoxLayout(self); head=QHBoxLayout(); head.addWidget(QLabel("Explore"),1); self.closeButton=QPushButton("×"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
+        layout=QVBoxLayout(self); head=QHBoxLayout(); head.addWidget(QLabel("Explore")); self.search=QLineEdit(); self.search.setPlaceholderText("Search research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
         self.tabs=QTabWidget(); self.tabs.addTab(self._cross_panel(),"Cross-references"); self.tabs.addTab(self._trace_panel(),"Trace"); self.tabs.addTab(self._study_panel(),"Studies"); layout.addWidget(self.tabs)
     @property
     def database(self): return self.session.database
     def set_selection(self, anchors): self.selection=list(anchors); self.refresh()
     def refresh(self): self._refresh_connections(); self._refresh_traces(); self._refresh_studies()
+    def _search(self):
+        rows=self.database.search_research(self.search.text())
+        if not rows:
+            self.notify("No matching research found"); return
+        QMessageBox.information(self,"Research search","\n".join(f"{r['title']} · {r['kind']} · {r['status']}" for r in rows))
     def _cross_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Connections"),1); top.addWidget(button("Add connection", "addConnection", self._add_connection,"primary")); l.addLayout(top)
         self.connections=QListWidget(); self.connections.setObjectName("graphConnections"); self.connections.itemDoubleClicked.connect(self._open_connection); l.addWidget(self.connections,1)
@@ -67,10 +72,11 @@ class GraphWorkspace(QWidget):
             except DATA_ERRORS as error: self.show_error("Could not edit the connection",error)
     def _open_connection(self,item):
         rid=item.data(Qt.ItemDataRole.UserRole); row=self.database._connection.execute("SELECT from_id,to_id FROM knowledge_relationships WHERE id=?",(rid,)).fetchone()
-        for object_id in row:
-            a=self.database._connection.execute("SELECT verse_id FROM scripture_anchors WHERE object_id=?",(object_id,)).fetchone()
-            if a:
-                b,c,v=a[0].split(':'); self.navigateRequested.emit(ScriptureAnchor(b,int(c),int(v),self.selection[0].translation if self.selection else None)); break
+        selected = self.database.scripture_anchor(self.selection[0]) if self.selection else None
+        object_id = row["to_id"] if row["from_id"] == selected else row["from_id"]
+        a=self.database._connection.execute("SELECT verse_id FROM scripture_anchors WHERE object_id=?",(object_id,)).fetchone()
+        if a:
+            b,c,v=a[0].split(':'); self.navigateRequested.emit(ScriptureAnchor(b,int(c),int(v),self.selection[0].translation if self.selection else None))
     def _trace_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Named traces"),1); top.addWidget(button("Create trace","createTrace",self._create_trace,"primary")); l.addLayout(top)
         self.traces=QListWidget(); self.traces.setObjectName("traceList"); self.traces.currentItemChanged.connect(lambda *_: self._refresh_trace_members()); l.addWidget(self.traces,1)
@@ -109,7 +115,8 @@ class GraphWorkspace(QWidget):
         if len(ref)==3: self.navigateRequested.emit(ScriptureAnchor(ref[0],int(ref[1]),int(ref[2]),self.selection[0].translation if self.selection else None))
     def _study_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Studies"),1); top.addWidget(button("New study","newStudy",self._create_study,"primary")); l.addLayout(top)
-        self.study_list=QListWidget(); self.study_list.setObjectName("studyList"); self.study_list.itemDoubleClicked.connect(self._open_study); l.addWidget(self.study_list,1); return w
+        self.study_list=QListWidget(); self.study_list.setObjectName("studyList"); self.study_list.itemDoubleClicked.connect(self._open_study); l.addWidget(self.study_list,1)
+        controls=QHBoxLayout(); controls.addWidget(button("Edit", "editStudy", self._edit_study)); controls.addWidget(button("Attach image", "attachStudyImage", self._attach_study_image)); controls.addWidget(button("History", "studyHistory", self._study_history)); l.addLayout(controls); return w
     def _refresh_studies(self):
         if not hasattr(self,'study_list'): return
         self.study_list.clear()
@@ -124,3 +131,34 @@ class GraphWorkspace(QWidget):
         except DATA_ERRORS as error: self.show_error("Could not create the study",error)
     def _open_study(self,item):
         row=self.database.study(item.data(Qt.ItemDataRole.UserRole)); QMessageBox.information(self,"Study",f"{row['title']}\n\n{row['summary']}\n\nObservations\n{row['observations']}\n\nQuestions\n{row['questions']}\n\nConclusions\n{row['conclusions']}")
+
+    def _selected_study(self):
+        item=self.study_list.currentItem(); return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def _edit_study(self):
+        study_id=self._selected_study()
+        if not study_id: return
+        row=self.database.study(study_id); dialog=QDialog(self); dialog.setWindowTitle("Edit study"); form=QFormLayout(dialog)
+        title=QLineEdit(row["title"]); fields=[]
+        for label,key in (("Summary","summary"),("Observations","observations"),("Questions","questions"),("Interpretations","interpretations"),("Conclusions","conclusions")):
+            edit=QPlainTextEdit(row[key]); fields.append(edit); form.addRow(label,edit)
+        form.insertRow(0,"Title",title); controls=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel); controls.accepted.connect(dialog.accept); controls.rejected.connect(dialog.reject); form.addRow(controls)
+        if dialog.exec()!=QDialog.DialogCode.Accepted: return
+        try:
+            self.database.update_study(study_id,title.text(),*(x.toPlainText() for x in fields)); self._refresh_studies(); self.notify("Study saved")
+        except DATA_ERRORS as error: self.show_error("Could not save the study",error)
+
+    def _attach_study_image(self):
+        study_id=self._selected_study()
+        if not study_id: return
+        path,_=QFileDialog.getOpenFileName(self,"Attach image or diagram","","Images (*.png *.jpg *.jpeg *.gif *.webp *.svg);;All files (*)")
+        if not path: return
+        try:
+            self.database.attach_file(study_id,path); self.notify("Attachment saved")
+        except DATA_ERRORS as error: self.show_error("Could not attach the image",error)
+
+    def _study_history(self):
+        study_id=self._selected_study()
+        if not study_id: return
+        rows=self.database.note_revisions(study_id); text="\n\n".join(f"{r['created_at']}\n{r['title']}\n{r['interpretations']}\n{r['conclusions']}" for r in rows)
+        QMessageBox.information(self,"Study history",text or "No saved revisions.")
