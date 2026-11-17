@@ -23,8 +23,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 9
-MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql", "008_lenses_contradictions.sql", "009_conversations.sql")
+SCHEMA_VERSION = 10
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql", "008_lenses_contradictions.sql", "009_conversations.sql", "010_discovery_fts.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
@@ -676,6 +676,14 @@ class Database:
     def search_research(self, query, *, folder_id=None, label_id=None, status=None, kind=None):
         query = _require_text(query, "Search text").strip()
         like = f"%{query}%"
+        if query:
+            self.rebuild_search_index()
+            try:
+                return self._connection.execute("""SELECT DISTINCT k.id,k.kind,k.title,k.body,k.status,n.folder_id
+                    FROM research_fts f JOIN knowledge_objects k ON k.id=f.object_id LEFT JOIN notes n ON n.object_id=k.id LEFT JOIN note_labels nl ON nl.note_id=k.id
+                    WHERE f MATCH ? AND (? IS NULL OR n.folder_id IS ?) AND (? IS NULL OR nl.label_id IS ?) AND (? IS NULL OR k.status=?) AND (? IS NULL OR k.kind=?) ORDER BY rank""", (query,folder_id,folder_id,label_id,label_id,status,status,kind,kind)).fetchall()
+            except sqlite3.OperationalError:
+                pass
         return self._connection.execute("""SELECT DISTINCT k.id,k.kind,k.title,k.body,k.status,n.folder_id
             FROM knowledge_objects k LEFT JOIN notes n ON n.object_id=k.id
             LEFT JOIN note_labels nl ON nl.note_id=k.id
@@ -685,6 +693,59 @@ class Database:
               AND (? IS NULL OR k.status = ?)
               AND (? IS NULL OR k.kind = ?)
             ORDER BY k.updated_at DESC,k.title COLLATE NOCASE""", (query,like,like,folder_id,folder_id,label_id,label_id,status,status,kind,kind)).fetchall()
+
+    def rebuild_search_index(self):
+        self._connection.execute("DELETE FROM research_fts")
+        self._connection.execute("INSERT INTO research_fts(object_id,kind,title,body) SELECT id,kind,title,body FROM knowledge_objects")
+
+    def discover_connections(self, anchors=(), trace_id=None, limit=40, challenge=False):
+        """Deterministic candidate generation; never writes knowledge or assumes alignment."""
+        candidates=[]; seen=set()
+        def add(kind,title,body,sources,limitations,confidence="moderate"):
+            key=tuple(sorted(sources))+ (kind,)
+            if key not in seen and len(candidates)<limit: seen.add(key); candidates.append({"kind":kind,"title":title,"body":body,"source_ids":list(sources),"limitations":limitations,"confidence":confidence})
+        for anchor in anchors:
+            aid=self.scripture_anchor(anchor)
+            for rel in self.knowledge_connections(aid):
+                if rel["status"] in {"rejected","parked"}: continue
+                other=rel["to_verse"] if rel["from_id"]==aid else rel["from_verse"]
+                if other: add("existing_connection",f"{anchor.book} {anchor.chapter}:{anchor.verse} ↔ {other}",rel["evidence"] or rel["type"],[aid,rel["id"]],"Existing graph evidence; relationship remains user-reviewed.")
+            for token in self.original_tokens(anchor.book,anchor.chapter,anchor.verse):
+                occ=self.lexeme_occurrences(token["strongs"])
+                if len(occ)>1:
+                    refs=[f"{o['verse_id']}" for o in occ[:8]]; add("shared_original_language",f"Shared {token['strongs']} occurrence",f"The Strong's identifier {token['strongs']} occurs in {len(occ)} indexed verses.",[token["id"]]+refs,"Dictionary identity does not establish contextual meaning or English alignment.")
+        if trace_id:
+            members=self.trace_members(trace_id)
+            for row in members:
+                if row["verse_id"]: add("trace_pattern",f"Trace member {row['title']}","This member participates in an existing trace network.",[trace_id,row["id"]],"Trace membership is user-created and is not proof of a textual relationship.","low")
+        if challenge:
+            for item in candidates: item["limitations"] += " Challenge mode: seek counterexamples and alternative explanations before saving."
+        return candidates
+
+    def save_discovery(self, proposal, status="draft"):
+        fingerprint=sha256(json.dumps([proposal["kind"],proposal["title"],proposal["source_ids"]],sort_keys=True).encode()).hexdigest()
+        with _transaction(self._connection):
+            row=self._connection.execute("SELECT id FROM discovery_proposals WHERE fingerprint=?",(fingerprint,)).fetchone()
+            if row:return row["id"]
+            pid=uuid4().hex; self._connection.execute("INSERT INTO discovery_proposals(id,kind,title,body,source_ids,limitations,confidence,status,fingerprint) VALUES(?,?,?,?,?,?,?,?,?)",(pid,proposal["kind"],proposal["title"],proposal["body"],json.dumps(proposal["source_ids"]),proposal.get("limitations",""),proposal.get("confidence","unrated"),status,fingerprint)); return pid
+
+    def discovery_proposals(self, status=None):
+        sql="SELECT * FROM discovery_proposals" + (" WHERE status=?" if status else "") + " ORDER BY created_at DESC"
+        return self._connection.execute(sql,(status,) if status else ()).fetchall()
+
+    def review_discovery(self, proposal_id, status, reviewer="User", reason="Discovery review"):
+        if status not in REVIEW_STATUSES: raise ValueError("Invalid research decision.")
+        with _transaction(self._connection):
+            row=self._connection.execute("SELECT * FROM discovery_proposals WHERE id=?",(proposal_id,)).fetchone()
+            if row is None: raise ValueError("The discovery proposal no longer exists.")
+            target=row["target_object_id"]
+            if status=="approved" and target is None:
+                target=self._insert_object("interpretation",row["title"],row["body"],"ai",source_detail=json.dumps({"discovery_id":proposal_id,"sources":json.loads(row["source_ids"]),"limitations":row["limitations"]}))
+                self._connection.execute("UPDATE discovery_proposals SET target_object_id=? WHERE id=?",(target,proposal_id))
+                self._connection.execute("INSERT INTO knowledge_reviews(id,object_id,status,reviewer,reason) VALUES(?,?,?,?,?)",(uuid4().hex,target,status,reviewer,reason))
+            else:
+                if target:self._connection.execute("INSERT INTO knowledge_reviews(id,object_id,status,reviewer,reason) VALUES(?,?,?,?,?)",(uuid4().hex,target,status,reviewer,reason))
+            self._connection.execute("UPDATE discovery_proposals SET status=? WHERE id=?",(status,proposal_id))
 
     def update_study(self, study_id, title, summary="", observations="", questions="", interpretations="", conclusions="") -> None:
         title = _require_name(title, "Study title")

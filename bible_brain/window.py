@@ -34,6 +34,7 @@ from .graph import GraphWorkspace
 from .investigate import InvestigatePanel
 from .lenses import LensPanel
 from .conversation_panel import ConversationPanel
+from .discovery import DiscoveryPanel
 
 
 LOGGER = logging.getLogger(__name__)
@@ -99,6 +100,9 @@ class MainWindow(QMainWindow):
         self.conversation = ConversationPanel(session, self.notify, self.show_error)
         self.splitter.addWidget(self.conversation)
         self.conversation.hide()
+        self.discovery = DiscoveryPanel(session, self.notify, self.show_error)
+        self.splitter.addWidget(self.discovery)
+        self.discovery.hide()
         self.setCentralWidget(self.page)
 
         status = QStatusBar()
@@ -157,6 +161,11 @@ class MainWindow(QMainWindow):
         self.conversation_button.setCheckable(True)
         self.conversation_button.toggled.connect(lambda checked: self.conversation.setVisible(checked))
         layout.addWidget(self.conversation_button)
+        self.discovery_button = QPushButton("Discover Connections")
+        self.discovery_button.setObjectName("discoverConnections")
+        self.discovery_button.setCheckable(True)
+        self.discovery_button.toggled.connect(lambda checked: self.discovery.setVisible(checked))
+        layout.addWidget(self.discovery_button)
         layout.addWidget(button("Settings", "openSettings", self._show_settings, "quiet"))
         return header
 
@@ -265,6 +274,7 @@ class MainWindow(QMainWindow):
             self.investigate.set_selection(self.selection)
 
     def _set_trace(self, trace_id):
+        self.discovery.set_trace(trace_id)
         if not trace_id:
             self.reader.highlight_verses([])
             return
@@ -376,6 +386,7 @@ class MainWindow(QMainWindow):
         self.workspace.set_selection(self.selection)
         self.graph.set_selection(self.selection)
         self.investigate.set_selection(self.selection)
+        self.discovery.set_selection(self.selection)
         if anchors:
             label = self.format_anchor(anchors[0])
             if len(anchors) > 1:
