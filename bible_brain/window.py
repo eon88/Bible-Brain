@@ -31,6 +31,7 @@ from .session import APPEARANCES, TEXT_SIZES
 from .typography import load_fonts
 from .workspace import DATA_ERRORS, ResearchWorkspace, SelectBox, button, item_heading
 from .graph import GraphWorkspace
+from .investigate import InvestigatePanel
 
 
 LOGGER = logging.getLogger(__name__)
@@ -86,6 +87,10 @@ class MainWindow(QMainWindow):
         self.graph.traceChanged.connect(self._set_trace)
         self.splitter.addWidget(self.graph)
         self.graph.hide()
+        self.investigate = InvestigatePanel(session, self.notify, self.show_error)
+        self.investigate.navigateRequested.connect(self._open_reference)
+        self.splitter.addWidget(self.investigate)
+        self.investigate.hide()
         self.setCentralWidget(self.page)
 
         status = QStatusBar()
@@ -129,6 +134,11 @@ class MainWindow(QMainWindow):
         self.explore_button.setCheckable(True)
         self.explore_button.toggled.connect(self._toggle_explore)
         layout.addWidget(self.explore_button)
+        self.investigate_button = QPushButton("Investigate")
+        self.investigate_button.setObjectName("toggleInvestigate")
+        self.investigate_button.setCheckable(True)
+        self.investigate_button.toggled.connect(self._toggle_investigate)
+        layout.addWidget(self.investigate_button)
         layout.addWidget(button("Settings", "openSettings", self._show_settings, "quiet"))
         return header
 
@@ -230,6 +240,11 @@ class MainWindow(QMainWindow):
         self.graph.setVisible(enabled)
         if enabled:
             self.graph.set_selection(self.selection)
+
+    def _toggle_investigate(self, enabled):
+        self.investigate.setVisible(enabled)
+        if enabled:
+            self.investigate.set_selection(self.selection)
 
     def _set_trace(self, trace_id):
         if not trace_id:
@@ -342,6 +357,7 @@ class MainWindow(QMainWindow):
         self.selection = list(anchors)
         self.workspace.set_selection(self.selection)
         self.graph.set_selection(self.selection)
+        self.investigate.set_selection(self.selection)
         if anchors:
             label = self.format_anchor(anchors[0])
             if len(anchors) > 1:

@@ -28,6 +28,15 @@ Strong's identifiers, lemmas, transliterations, morphology, dictionary definitio
 occurrences from the selected verse. See [Original languages](docs/ORIGINAL_LANGUAGES.md)
 for the validated JSON envelope and STEPBible CC BY 4.0 source evaluation.
 
+## Meaning Engine (Bundle 05)
+
+The **Investigate** panel uses local Ollama models when available. It retrieves a
+bounded, inspectable context from Scripture, the knowledge graph, studies, notes and
+original-language resources, then presents a provisional response with validated
+citations. Results are never saved or approved automatically. If Ollama is unavailable,
+the reader and research workspace remain usable offline. See [Architecture](docs/ARCHITECTURE.md)
+for provider and evidence boundaries.
+
 ## Develop and build
 
 From the repository root in PowerShell, using 64-bit Python 3.12 and Git:

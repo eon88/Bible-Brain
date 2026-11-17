@@ -24,6 +24,16 @@ folder, label, anchor, revision and relationship infrastructure. Manual editing 
 implemented; automated conversation processing and AI discovery are intentionally
 deferred.
 
+## Bundle 05: Meaning Engine
+
+`meaning.py` separates retrieval from generation. `ContextRetriever` returns bounded,
+source-ID-bearing evidence from Scripture, connections, traces, studies, notes and
+original-language tokens. `OllamaProvider` is the initial local adapter and
+`MockProvider` provides deterministic tests. Provider citations must match retrieved
+IDs or verified Scripture references. An investigation remains an in-memory result
+until the user explicitly saves it as an interpretation proposal; saving uses the
+existing review workflow and never auto-approves content.
+
 The Windows app runs a single Qt Widgets process. `window` and `reader` handle presentation. `session` manages local preferences, the active database, import and recovery. `datasets` validates the translation interchange envelope. `database` and its SQL migrations depend on the Python standard library and have no dependency on Qt. SQLite is the source of truth for Scripture and research. The application opens files directly and starts no HTTP server.
 
 SQLite stores Scripture addresses as USFM book codes, `BOOK:chapter` chapter IDs and `BOOK:chapter:verse` verse IDs. An edition links its code to the shared verse address and its own immutable text. The import validates the whole translation, installs it atomically and seals the edition. A reimport of the same edition is idempotent. A different edition requires its own identifier. The same-address model supports Bundle 01 datasets with compatible verse numbering. A future versification mapping will be needed to align differently numbered, split or merged verses.
