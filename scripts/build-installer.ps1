@@ -3,7 +3,8 @@ param(
     [ValidatePattern('^\d{1,3}\.\d{1,3}\.\d{1,5}$')]
     [string] $Version,
     [string] $BuildDirectory,
-    [string] $OutputDirectory
+    [string] $OutputDirectory,
+    [switch] $PerUser
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,10 +31,16 @@ if ($applicationVersion.Major -gt 255 -or $applicationVersion.Minor -gt 255 -or 
     throw 'Windows Installer versions have the range 0.0.0 through 255.255.65535.'
 }
 $Version = $applicationVersion.ToString(3)
+$packageSuffix = ''
+$scopeArguments = @()
+if ($PerUser) {
+    $packageSuffix = '-user'
+    $scopeArguments = @('-dPerUser=1')
+}
 # A rebuild of the same release should have the same Windows Installer product identity.
 $sha = [Security.Cryptography.SHA256]::Create()
 try {
-    $digest = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("Bible Brain x64 MSI $Version"))
+    $digest = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("Bible Brain x64 MSI $Version$packageSuffix"))
 } finally {
     $sha.Dispose()
 }
@@ -71,19 +78,19 @@ if ($missingCommand) {
     Expand-Archive -LiteralPath $archive -DestinationPath $wix -Force
 }
 
-$intermediate = Join-Path $tools 'installer'
+$intermediate = Join-Path $tools "installer$packageSuffix"
 New-Item -ItemType Directory -Path $intermediate, $OutputDirectory -Force | Out-Null
 $output = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $harvest = Join-Path $intermediate 'Application.wxs'
 $source = Join-Path $project 'installer\BibleBrain.wxs'
-$msi = Join-Path $output "Bible-Brain-Setup-$Version-x64.msi"
+$msi = Join-Path $output "Bible-Brain-Setup-$Version-x64$packageSuffix.msi"
 
 & (Join-Path $wix 'heat.exe') dir $internal -nologo -ag -scom -sreg -sfrag -srd `
     -dr INTERNALFOLDER -cg BibleBrainFiles -var var.InternalSource -out $harvest
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not harvest the application bundle.' }
 
 & (Join-Path $wix 'candle.exe') -nologo -arch x64 "-dAppSource=$application" "-dInternalSource=$internal" `
-    "-dAppVersion=$Version" "-dProductCode=$productCode" -out "$intermediate\" $source $harvest
+    "-dAppVersion=$Version" "-dProductCode=$productCode" @scopeArguments -out "$intermediate\" $source $harvest
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not compile the installer definition.' }
 
 & (Join-Path $wix 'light.exe') -nologo -ext WixUIExtension -spdb -out $msi `

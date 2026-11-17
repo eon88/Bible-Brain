@@ -1,18 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<?ifdef PerUser ?>
+  <?define PackageScope="perUser" ?>
+  <?define UpgradeCode="F10F44E3-D42D-4D26-8432-C05DF8AA21F1" ?>
+<?else ?>
+  <?define PackageScope="perMachine" ?>
+  <?define UpgradeCode="D86B0212-288A-43C1-99C6-BCCB7729C96E" ?>
+<?endif ?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="$(var.ProductCode)" Name="Bible Brain" Language="1033" Version="$(var.AppVersion)"
-           Manufacturer="Bible Brain" UpgradeCode="D86B0212-288A-43C1-99C6-BCCB7729C96E">
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+           Manufacturer="Bible Brain" UpgradeCode="$(var.UpgradeCode)">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="$(var.PackageScope)" />
     <MajorUpgrade Schedule="afterInstallInitialize"
                   DowngradeErrorMessage="A newer version of Bible Brain is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Property Id="ARPNOMODIFY" Value="1" />
+    <?ifdef PerUser ?>
+    <Property Id="ALLUSERS" Secure="yes" />
+    <Condition Message="Use the all-users installer to install Bible Brain for everyone.">NOT ALLUSERS</Condition>
+    <SetProperty Id="INSTALLFOLDER" Value="[LocalAppDataFolder]Programs\Bible Brain"
+                 Before="CostFinalize" Sequence="both">1</SetProperty>
+    <?endif ?>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
+        <?ifdef PerUser ?>
+        <Directory Id="INSTALLFOLDER" Name="Bible Brain" ComponentGuidGenerationSeed="095C5213-1534-415E-82A3-8FDE57BFF6E7">
+          <Directory Id="INTERNALFOLDER" Name="_internal" />
+        </Directory>
+        <?else ?>
         <Directory Id="INSTALLFOLDER" Name="Bible Brain">
           <Directory Id="INTERNALFOLDER" Name="_internal" />
         </Directory>
+        <?endif ?>
       </Directory>
       <Directory Id="ProgramMenuFolder">
         <Directory Id="BibleBrainPrograms" Name="Bible Brain" />
