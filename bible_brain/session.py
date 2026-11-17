@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from .database import Database
-from .datasets import BUNDLED_WEB, import_dataset, import_original_language
+from .datasets import BUNDLED_ORIGINAL_LANGUAGES, BUNDLED_WEB, import_dataset, import_original_language
 
 logger = logging.getLogger(__name__)
 APPEARANCES = ("System", "Light", "Dark")
@@ -62,7 +62,7 @@ class Session:
         self._preferences = Preferences.from_file(self.settings_path, default_database)
         if self.database_path != default_database and not self.database_path.is_file():
             raise ValueError(f"Reconnect the drive or put the configured database back at {self.database_path}.")
-        self.database = self._open_database(self.database_path)
+        self.database = self._open_database(self.database_path, install_bundled=self.data_dir == default_data_dir())
 
     @property
     def database_path(self) -> Path:
@@ -77,12 +77,18 @@ class Session:
         return self._preferences.text_size
 
     @staticmethod
-    def _open_database(path: Path) -> Database:
+    def _open_database(path: Path, install_bundled: bool = False) -> Database:
         database = Database(path)
         try:
             if not database.translations():
                 count = import_dataset(database, BUNDLED_WEB)
                 logger.info("Installed bundled Scripture (%d addresses)", count)
+            if install_bundled:
+                installed = {row["code"].casefold() for row in database.language_resources()}
+                for resource in BUNDLED_ORIGINAL_LANGUAGES:
+                    if resource.stem.casefold() not in installed:
+                        count = import_original_language(database, resource)
+                        logger.info("Installed bundled original-language resource %s (%d tokens)", resource.name, count)
             return database
         except Exception:
             database.close()
@@ -122,7 +128,7 @@ class Session:
         path = self._database_file(path)
         if path == self.database_path:
             return
-        candidate = self._open_database(path)
+        candidate = self._open_database(path, install_bundled=self.data_dir == default_data_dir())
         try:
             self._save(replace(self._preferences, database_path=str(path)))
         except Exception:

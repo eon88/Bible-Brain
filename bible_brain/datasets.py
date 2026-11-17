@@ -11,6 +11,7 @@ from .database import Database
 _MAX_BYTES = 64 * 1024 * 1024
 _STRING_FIELDS = ("code", "name", "language", "license", "source_url")
 BUNDLED_WEB = Path(__file__).parent / "data" / "web.json.gz"
+BUNDLED_ORIGINAL_LANGUAGES = tuple(sorted((Path(__file__).parent / "data").glob("*.bb-lang")))
 _LANGUAGE_FIELDS = ("code", "language", "name", "license", "source_url")
 
 
