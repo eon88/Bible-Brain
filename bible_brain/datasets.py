@@ -3,6 +3,7 @@
 import gzip
 import json
 from pathlib import Path
+import zipfile
 import zlib
 
 from .database import Database
@@ -64,12 +65,22 @@ def import_original_language(database: Database, path: Path) -> int:
     never stores an English character offset.
     """
     path = Path(path)
+    if path.suffix.lower() == ".bb-lang":
+        try:
+            with zipfile.ZipFile(path) as archive:
+                resource = json.loads(archive.read("manifest.json").decode("utf-8"))
+                resource["lexemes"] = [json.loads(line) for line in archive.read("lexemes.jsonl").decode("utf-8").splitlines() if line]
+                resource["tokens"] = [json.loads(line) for line in archive.read("tokens.jsonl").decode("utf-8").splitlines() if line]
+                resource["morphologies"] = [json.loads(line) for line in archive.read("morphologies.jsonl").decode("utf-8").splitlines() if line]
+        except (OSError, KeyError, zipfile.BadZipFile, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError("The .bb-lang package is incomplete or invalid.") from error
+        return _import_original_resource(database, resource)
     if path.suffix.lower() == ".gz" or path.name.lower().endswith(".json.gz"):
         opener = gzip.open
     elif path.suffix.lower() == ".json":
         opener = open
     else:
-        raise ValueError("Choose a Bible Brain original-language JSON or JSON.gz file.")
+        raise ValueError("Choose a Bible Brain .bb-lang, JSON or JSON.gz original-language file.")
     try:
         with opener(path, "rb") as stream:
             content = stream.read(_MAX_BYTES + 1)
@@ -78,6 +89,10 @@ def import_original_language(database: Database, path: Path) -> int:
         resource = json.loads(content.decode("utf-8-sig"))
     except (OSError, UnicodeError, json.JSONDecodeError, gzip.BadGzipFile, EOFError, zlib.error) as error:
         raise ValueError("The original-language file must contain valid UTF-8 JSON.") from error
+    return _import_original_resource(database, resource)
+
+
+def _import_original_resource(database: Database, resource: dict) -> int:
     if not isinstance(resource, dict) or resource.get("format") != 1:
         raise ValueError("The original-language file must use format version 1.")
     for field in _LANGUAGE_FIELDS:
@@ -92,4 +107,6 @@ def import_original_language(database: Database, path: Path) -> int:
         **{field: resource[field] for field in _LANGUAGE_FIELDS},
         lexemes=resource["lexemes"], tokens=resource["tokens"],
         morphologies=resource.get("morphologies", []),
+        source_revision=resource.get("source_revision", ""),
+        source_manifest=resource.get("source_files", []),
     )

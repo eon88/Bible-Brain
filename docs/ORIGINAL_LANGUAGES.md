@@ -21,7 +21,23 @@ the relevant STEPBible Hebrew/Aramaic lexicon entries.
 
 ## Import envelope
 
-Import a UTF-8 JSON or JSON.gz file from Settings → Import original-language resource:
+Import a UTF-8 JSON/JSON.gz file or a streamed `.bb-lang` package from Settings → Import original-language resource. `.bb-lang` packages contain a manifest plus line-oriented lexeme, morphology and token files, so full STEPBible exports do not need to be represented as one oversized JSON document.
+
+Convert a STEPBible export with:
+
+```powershell
+& .\.venv\Scripts\python.exe scripts\stepbible_convert.py `
+  --code STEP-TAGNT-ACT-REV --language el `
+  --name "STEPBible TAGNT Acts-Revelation" --license "CC BY 4.0" `
+  --source-url "https://github.com/STEPBible/STEPBible-Data" `
+  --lexicon .\TBESG.txt --morphology .\TEGMC.txt `
+  --tagged .\TAGNT-Act-Rev.txt --output .\STEP-TAGNT-ACT-REV.bb-lang
+```
+
+The converter records SHA-256 checksums for every source file, a source revision,
+counts, and any references omitted because the active Bible versification has no
+matching canonical verse. Those omissions are reported in the package manifest rather
+than merged into another textual tradition.
 
 ```json
 {

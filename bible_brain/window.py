@@ -535,7 +535,7 @@ class MainWindow(QMainWindow):
     def _import_original_language(self):
         chosen, _ = QFileDialog.getOpenFileName(
             self._dialog_parent(), "Import licensed original-language resource", "",
-            "Bible Brain original-language dataset (*.json *.json.gz);;All files (*)"
+            "Bible Brain original-language dataset (*.bb-lang *.json *.json.gz);;All files (*)"
         )
         if chosen:
             try:

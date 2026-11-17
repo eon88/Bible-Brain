@@ -22,8 +22,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 2
-MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql")
+SCHEMA_VERSION = 5
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
@@ -305,7 +305,7 @@ class Database:
         ).fetchall()
 
     def import_original_language(self, *, code, language, name, license, source_url,
-                                 lexemes, tokens, morphologies=()) -> int:
+                                 lexemes, tokens, morphologies=(), source_revision="", source_manifest=()) -> int:
         """Atomically import a verifiable lexicon and verse token map.
 
         Tokens deliberately point to canonical verse IDs, never to translation text
@@ -350,11 +350,14 @@ class Database:
             _require_integer(ordinal, "Token ordinal", 0)
             if strongs not in lexeme_rows:
                 raise ValueError(f"Token refers to missing lexeme {strongs!r}.")
+            if self._connection.execute("SELECT 1 FROM canonical_verses WHERE id = ?", (f"{book}:{chapter}:{verse}",)).fetchone() is None:
+                raise ValueError(f"Token refers to unavailable Scripture address {book} {chapter}:{verse}.")
             surface = _require_name(row.get("surface"), "Token surface", 500)
-            key = (book, chapter, verse, ordinal)
+            variant = _require_text(row.get("variant", ""), "Textual variant")
+            key = (book, chapter, verse, ordinal, variant)
             if key in seen: raise ValueError("Duplicate original-language token address.")
             seen.add(key)
-            token_rows.append((book, chapter, verse, ordinal, surface, strongs, row.get("morphology")))
+            token_rows.append((book, chapter, verse, ordinal, surface, strongs, row.get("morphology"), variant))
         digest = sha256(json.dumps([code, language, metadata, lexemes, tokens, list(morphologies)], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         with _transaction(self._connection):
             existing = self._connection.execute("SELECT content_hash FROM language_resources WHERE code = ?", (code,)).fetchone()
@@ -363,14 +366,15 @@ class Database:
                     raise ValueError(f"Original-language resource {code} is already installed with different content.")
                 return 0
             resource_id = uuid4().hex
-            self._connection.execute("INSERT INTO language_resources(id, code, language, name, license, source_url, content_hash) VALUES (?,?,?,?,?,?,?)", (resource_id, code, language, *metadata, digest))
+            manifest_json = json.dumps(list(source_manifest), ensure_ascii=False, sort_keys=True)
+            self._connection.execute("INSERT INTO language_resources(id, code, language, name, license, source_url, content_hash, source_revision, source_manifest) VALUES (?,?,?,?,?,?,?,?,?)", (resource_id, code, language, *metadata, digest, _require_text(source_revision, "Source revision"), manifest_json))
             for morph in morphology_rows:
                 self._connection.execute("INSERT OR IGNORE INTO morphologies(language, code, label, description) VALUES (?,?,?,?)", (language, *morph))
             for strongs, (lemma, transliteration, definition) in lexeme_rows.items():
                 self._connection.execute("INSERT INTO lexemes(id, resource_id, strongs, language, lemma, transliteration, dictionary_definition) VALUES (?,?,?,?,?,?,?)", (uuid4().hex, resource_id, strongs, language, lemma, transliteration, definition))
-            for book, chapter, verse, ordinal, surface, strongs, morphology in token_rows:
+            for book, chapter, verse, ordinal, surface, strongs, morphology, variant in token_rows:
                 lexeme_id = self._connection.execute("SELECT id FROM lexemes WHERE resource_id=? AND strongs=?", (resource_id, strongs)).fetchone()[0]
-                self._connection.execute("INSERT INTO original_tokens(id, resource_id, verse_id, ordinal, surface, lexeme_id, morphology_code) VALUES (?,?,?,?,?,?,?)", (uuid4().hex, resource_id, f"{book}:{chapter}:{verse}", ordinal, surface, lexeme_id, morphology))
+                self._connection.execute("INSERT INTO original_tokens(id, resource_id, verse_id, ordinal, surface, lexeme_id, morphology_code, textual_variant) VALUES (?,?,?,?,?,?,?,?)", (uuid4().hex, resource_id, f"{book}:{chapter}:{verse}", ordinal, surface, lexeme_id, morphology, variant))
             self._connection.execute(f"UPDATE language_resources SET sealed_at = {NOW} WHERE id = ?", (resource_id,))
         return len(token_rows)
 
