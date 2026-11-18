@@ -12,7 +12,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog, QLineEdit, QListWidget, QMessageBox,
-    QPlainTextEdit, QPushButton, QSpinBox,
+    QPlainTextEdit, QPushButton, QSpinBox, QToolButton,
 )
 
 from bible_brain.session import Session
@@ -150,3 +150,23 @@ class WindowTests(unittest.TestCase):
         warning.assert_not_called()
         self.assertEqual(self.session.database.note(note_id)["body"], "Before backup")
         self.assertEqual((self.session.appearance, self.session.text_size), ("Dark", 21))
+
+    def test_reader_modes_selection_actions_and_companion_state(self):
+        reader = self.window.reader
+        span = reader.spans[0]
+        cursor = reader.textCursor()
+        cursor.setPosition(span.text_start)
+        cursor.setPosition(span.text_start + 4, QTextCursor.MoveMode.KeepAnchor)
+        reader.setTextCursor(cursor)
+        reader.publish_selection()
+        self.assertTrue(self.window.findChild(QToolButton, "saveSelection").isVisible())
+        self.window.graph.pin_selection(self.window.selection)
+        self.assertEqual(self.session.ui_state["companion_pin"]["label"], "GEN 1:1")
+        self.window.mode_selector.setCurrentText("Exploration")
+        self.assertEqual(self.window.reader_mode, "Exploration")
+        self.window.filter_actions["connections"].setChecked(False)
+        self.assertFalse(self.session.ui_state["exploration_filters"]["connections"])
+        self.window.mode_selector.setCurrentText("Mapping")
+        self.assertTrue(self.window.mapping_panel.isVisible())
+        self.window.mode_selector.setCurrentText("Reading")
+        self.assertTrue(self.window.reader.isVisible())
