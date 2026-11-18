@@ -104,7 +104,7 @@ class GraphWorkspace(QWidget):
     def _trace_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Named traces"),1); top.addWidget(button("Create trace","createTrace",self._create_trace,"primary")); l.addLayout(top)
         self.traces=QListWidget(); self.traces.setObjectName("traceList"); self.traces.currentItemChanged.connect(lambda *_: self._refresh_trace_members()); l.addWidget(self.traces,1)
-        controls=QHBoxLayout(); controls.addWidget(button("Add to trace","addToTrace",self._add_to_trace)); controls.addWidget(button("Move up","moveTraceUp",lambda: self._move_trace_member(-1))); controls.addWidget(button("Move down","moveTraceDown",lambda: self._move_trace_member(1))); self.active=QPushButton("Activate"); self.active.setCheckable(True); self.active.toggled.connect(self._toggle_trace); controls.addWidget(self.active); l.addLayout(controls)
+        controls=QHBoxLayout(); controls.addWidget(button("Add to trace","addToTrace",self._add_to_trace)); controls.addWidget(button("Edit trace","editTrace",self._edit_trace)); controls.addWidget(button("Move up","moveTraceUp",lambda: self._move_trace_member(-1))); controls.addWidget(button("Move down","moveTraceDown",lambda: self._move_trace_member(1))); self.active=QPushButton("Activate"); self.active.setCheckable(True); self.active.toggled.connect(self._toggle_trace); controls.addWidget(self.active); l.addLayout(controls)
         self.trace_members_view=QListWidget(); self.trace_members_view.setObjectName("traceMembers"); self.trace_members_view.itemDoubleClicked.connect(self._open_trace_member); l.addWidget(self.trace_members_view,1); return w
     def _refresh_traces(self):
         if not hasattr(self,'traces'): return
@@ -125,6 +125,21 @@ class GraphWorkspace(QWidget):
         if ok:
             try: self.database.create_trace(name); self._refresh_traces()
             except DATA_ERRORS as error: self.show_error("Could not create the trace",error)
+
+    def _edit_trace(self):
+        trace_id=self._selected_trace()
+        if not trace_id: return
+        row=next((item for item in self.database.traces() if item["id"] == trace_id), None)
+        if row is None: return
+        dialog=QDialog(self); dialog.setWindowTitle("Edit trace"); form=QFormLayout(dialog)
+        title=QLineEdit(row["title"]); description=QPlainTextEdit(row["description"]); color=QLineEdit(row["color"])
+        form.addRow("Name",title); form.addRow("Description",description); form.addRow("Colour",color)
+        controls=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel); controls.accepted.connect(dialog.accept); controls.rejected.connect(dialog.reject); form.addRow(controls)
+        if dialog.exec()!=QDialog.DialogCode.Accepted: return
+        try:
+            self.database.update_trace(trace_id,title.text(),description.toPlainText(),color.text(),row["position"])
+            self._refresh_traces(); self.notify("Trace updated")
+        except DATA_ERRORS as error: self.show_error("Could not update the trace",error)
     def _add_to_trace(self):
         tid=self._selected_trace()
         if not tid or not self.selection: return
