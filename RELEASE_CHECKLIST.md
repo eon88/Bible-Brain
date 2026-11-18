@@ -11,6 +11,7 @@
 - [x] Complete genuine Ollama generation acceptance test on this machine (`phi3.5:3.8b`).
 - [x] Complete upgrade test over the existing per-user installation (MSI exit 0, executable and Start-menu shortcut verified).
 - [ ] Complete clean-install test on a separate Windows profile.
-- [ ] Complete all five scripted real-world acceptance scenarios.
+- [x] Add and run repeatable isolated acceptance coverage for Tree of Life, conversation reimport, rejected discoveries, FTS repair and backup/restore.
+- [ ] Complete the full interactive UI walkthrough for all five scenarios.
 
 The unchecked items require interactive Windows/model state and must not be claimed from compilation alone.
