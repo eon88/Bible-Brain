@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         self.trace_session_id = None
         self.trace_members = []
         self.trace_index = 0
+        self.continuous_chapters = []
         self.setWindowTitle("Bible Brain")
         self.setObjectName("mainWindow")
         self.setMinimumSize(640, 545)
@@ -290,6 +291,7 @@ class MainWindow(QMainWindow):
         self.reader.line_spacing = self.session.line_spacing
         self.reader.reading_width = self.session.reading_width
         self.reader.scriptureSelected.connect(self._set_selection)
+        self.reader.verticalScrollBar().valueChanged.connect(self._reader_scroll_changed)
         layout.addWidget(self.reader, 1)
         self.mapping_panel = QFrame()
         self.mapping_panel.setObjectName("mappingWorkspace")
@@ -725,9 +727,45 @@ class MainWindow(QMainWindow):
             translation, book, chapter, title, edition,
             self.database.verses(translation, book, chapter), self.session.text_size, self.colors,
         )
+        self.continuous_chapters = [(book, chapter)]
+        for _ in range(2):
+            if not self._append_next_continuous():
+                break
         self._refresh_exploration_overlays()
         self.previous.setEnabled(self.database.next_chapter(translation, book, chapter, -1) is not None)
         self.next.setEnabled(self.database.next_chapter(translation, book, chapter, 1) is not None)
+
+    def _append_next_continuous(self):
+        translation = self.edition.currentData()
+        if not self.continuous_chapters or not translation:
+            return False
+        book, chapter = self.continuous_chapters[-1]
+        destination = self.database.next_chapter(translation, book, chapter, 1)
+        if destination is None or destination[0] != book:
+            return False
+        next_book, next_chapter = destination
+        self.reader.append_chapter(
+            next_book, next_chapter, f"{self.book_names.get(next_book, next_book)} {next_chapter}",
+            self.database.verses(translation, next_book, next_chapter), self.session.text_size, self.colors,
+        )
+        self.continuous_chapters.append(destination)
+        return True
+
+    def _reader_scroll_changed(self, value):
+        if not self.reader.spans:
+            return
+        scrollbar = self.reader.verticalScrollBar()
+        if value >= max(0, scrollbar.maximum() - 48):
+            self._append_next_continuous()
+        cursor = self.reader.cursorForPosition(self.reader.viewport().rect().topLeft())
+        position = cursor.position()
+        visible = next((span for span in reversed(self.reader.spans) if span.block_start <= position), None)
+        if visible and visible.chapter and self.chapter.currentData() != visible.chapter:
+            self.chapter.blockSignals(True)
+            index = self.chapter.findData(visible.chapter)
+            if index >= 0:
+                self.chapter.setCurrentIndex(index)
+            self.chapter.blockSignals(False)
 
     def _goto_chapter(self, translation, book, chapter):
         edition_index = self.edition.findData(translation)

@@ -25,6 +25,8 @@ class VerseSpan:
     text_start: int
     text: str
     display_text: str
+    book: str = ""
+    chapter: int = 0
 
     @property
     def text_end(self):
@@ -111,11 +113,37 @@ class ChapterReader(QTextBrowser):
             block_start = cursor.position()
             cursor.insertText(f"{verse['number']}\t", number_format)
             display_text = _render_breaks(text)
-            self.spans.append(VerseSpan(verse["number"], block_start, cursor.position(), text, display_text))
+            self.spans.append(VerseSpan(verse["number"], block_start, cursor.position(), text, display_text, book, chapter))
             cursor.insertText(display_text or "—", verse_format if text else empty_format)
         self._update_margins()
         self.moveCursor(QTextCursor.MoveOperation.Start)
         self.verticalScrollBar().setValue(0)
+
+    def append_chapter(self, book, chapter, title, verses, size, colors):
+        """Append an adjacent chapter while preserving exact book/chapter spans."""
+        if not verses:
+            return
+        cursor = QTextCursor(self.document())
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        heading = QTextBlockFormat(); heading.setTopMargin(28); heading.setBottomMargin(12)
+        cursor.insertBlock(heading)
+        cursor.insertText(title, self._format(self.serif, 25, colors["ink"]))
+        block = QTextBlockFormat()
+        block.setLeftMargin(36); block.setTextIndent(-36); block.setBottomMargin(11)
+        block.setLineHeight(self.line_spacing, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+        tab = QTextOption.Tab(); tab.position = 36; block.setTabPositions([tab])
+        number_format = self._format(self.sans, 9, colors["soft"], QFont.Weight.DemiBold)
+        verse_format = self._format(self.serif, size, colors["ink"])
+        empty_format = self._format(self.sans, 10, colors["soft"])
+        for verse in verses:
+            text = verse["text"]
+            cursor.insertBlock(block, verse_format)
+            block_start = cursor.position()
+            cursor.insertText(f"{verse['number']}\t", number_format)
+            display_text = _render_breaks(text)
+            self.spans.append(VerseSpan(verse["number"], block_start, cursor.position(), text, display_text, book, chapter))
+            cursor.insertText(display_text or "—", verse_format if text else empty_format)
+        self._update_margins()
 
     def _write_header(self, cursor, title, edition, colors):
         title_block = QTextBlockFormat()
@@ -189,7 +217,7 @@ class ChapterReader(QTextBrowser):
         self.setExtraSelections(selections)
 
     def select_anchor(self, anchor):
-        span = next((span for span in self.spans if span.number == anchor.verse), None)
+        span = next((span for span in self.spans if span.number == anchor.verse and span.book == anchor.book and span.chapter == anchor.chapter), None)
         if span is None:
             return
         cursor = self.textCursor()
@@ -216,7 +244,7 @@ class ChapterReader(QTextBrowser):
                 last -= 1
             if first < last:
                 anchors.append(ScriptureAnchor(
-                    self.book, self.chapter, span.number, self.translation, first, last
+                    span.book or self.book, span.chapter or self.chapter, span.number, self.translation, first, last
                 ))
         return anchors
 
@@ -231,4 +259,4 @@ class ChapterReader(QTextBrowser):
         highlight.format.setBackground(QColor(self.verse_highlight))
         highlight.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
         self.setExtraSelections([highlight])
-        return [ScriptureAnchor(self.book, self.chapter, span.number)]
+        return [ScriptureAnchor(span.book or self.book, span.chapter or self.chapter, span.number)]
