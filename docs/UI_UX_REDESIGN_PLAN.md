@@ -1,5 +1,62 @@
 # Bible Brain UI/UX Redesign Plan
 
+## Design approval tracker
+
+This is the **living design specification**, not an implementation instruction. Discuss and approve each item before coding. Codex should **not implement this redesign until explicitly instructed**.
+
+| Task | Design status | Implementation status |
+|---|---|---|
+| 1. Main Scripture reader | **Approved — 18 November 2026** | Not started |
+| 2. Study Companion | To discuss | Not started |
+| 3. Reading / Exploration / Mapping modes | To discuss | Not started |
+| 4. Word and phrase interaction | To discuss | Not started |
+| 5. Trace reading experience | To discuss | Not started |
+| 6. Consolidate research tools | To discuss | Not started |
+| 7. Study workspace | To discuss | Not started |
+| 8. Evidence status visual language | To discuss | Not started |
+| 9. Visual and responsive polish | To discuss | Not started |
+| 10. Regression and acceptance checks | To discuss | Not started |
+
+## Task 1 — Approved main-screen design
+
+**Status: Design approved; no code changes authorised by this document.**
+
+### Purpose and visual reference
+
+The main screen should feel like opening and reading a Bible, rather than operating a database or research dashboard. Use the user-provided **Living Bible Study** screenshot as the principal visual reference: dark forest green, cream Scripture text, restrained green/gold accents, elegant serif reading typography, generous verse spacing, simple navigation, and a contextual right-hand Study Companion. Borrow the **visual and interaction language**, not the older application's backend.
+
+### Approved behaviour
+
+- **Bible as home:** Launch directly into the Scripture reader. Scripture is the dominant central view; no wall of Research, Discuss, AI, Lenses, Graph or Discovery panels.
+- **Study Companion closed by default:** On app launch, the reader has the available reading space. Opening and resizing the companion is defined in later tasks.
+- **Navigation:** A slim desktop navigation (Bible, Study, Explore, Traces, Library); compact navigation on phones. Provide book, chapter and translation selection, plus direct passage/verse navigation.
+- **Continuous reading:** Scroll naturally from chapter to chapter within a book, with clear chapter headings instead of separate chapter pages.
+- **Smart chapter indication:** The displayed chapter follows the passage currently being read as the user scrolls, without unexpectedly moving the reader.
+- **Resume reading:** Reopening Bible Brain restores the last passage and scroll position.
+- **Reading controls:** Adjustable font size, line spacing and reading-column width, with a comfortable centred reading column on wide screens.
+- **Clean selection:** Users can select verses, words and phrases without cluttering or interrupting Scripture. Research actions attached to selection will be defined in Task 4.
+- **Responsive experience:** Desktop and mobile layouts should retain clear navigation, comfortable typography, touch-friendly selections and minimal wasted space.
+- **No data-layer rebuild:** Preserve existing Scripture/translations, Strong's references, Scripture anchors, studies, traces, conversations, graph, reviews and local-first data.
+- **Large-book usability:** Keep scrolling and navigation responsive for long books; implementation details are for Codex to determine when authorised.
+
+### User journey and acceptance criteria
+
+1. Open Bible Brain to a clean reader at the remembered passage and reading position.
+2. Change book/chapter/translation or jump directly to a verse without losing navigation clarity.
+3. Scroll across successive chapters; the current chapter label tracks the reading position.
+4. Change typography settings and continue reading in a comfortable column on desktop or mobile.
+5. Select an individual word, phrase or verse without disrupting reading or invoking an unwanted panel.
+6. Confirm the Study Companion is initially closed and the existing research/study data remains intact.
+
+### Explicitly deferred — do not assume approval
+
+- Whether scrolling continues automatically from one *book* to the next, rather than between chapters within a book.
+- Whether reading settings and position sync across devices or remain local.
+- Exact text-selection toolbar and research actions (Task 4).
+- Study Companion sizing, animation and open-state handling (Task 2).
+- Additional Living Bible Study features and their placement (later tasks).
+- Detailed Exploring/Mapping behaviour and AI placement (later tasks).
+
 ## Product direction
 
 Bible Brain should feel like this:
