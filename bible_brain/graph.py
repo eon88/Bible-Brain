@@ -12,8 +12,8 @@ class GraphWorkspace(QWidget):
     navigateRequested = Signal(object)
     traceChanged = Signal(object)
     def __init__(self, session, notify, show_error):
-        super().__init__(); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None
-        layout=QVBoxLayout(self); head=QHBoxLayout(); head.addWidget(QLabel("Explore")); self.search=QLineEdit(); self.search.setPlaceholderText("Search research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
+        super().__init__(); self.setObjectName("explorePanel"); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None
+        layout=QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12); head=QHBoxLayout(); title=QLabel("Explore"); title.setProperty("role","panelTitle"); head.addWidget(title); self.search=QLineEdit(); self.search.setPlaceholderText("Search your research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.setToolTip("Close Explore"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
         self.tabs=QTabWidget(); self.tabs.addTab(self._cross_panel(),"Cross-references"); self.tabs.addTab(self._trace_panel(),"Trace"); self.tabs.addTab(self._study_panel(),"Studies"); layout.addWidget(self.tabs)
     @property
     def database(self): return self.session.database

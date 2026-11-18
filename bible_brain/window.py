@@ -130,39 +130,56 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(25, 0, 24, 0)
         layout.setSpacing(9)
 
+        brand_box = QWidget()
+        brand_layout = QVBoxLayout(brand_box)
+        brand_layout.setContentsMargins(0, 0, 0, 0)
+        brand_layout.setSpacing(0)
         brand = QLabel("Bible Brain")
         brand.setObjectName("wordmark")
-        layout.addWidget(brand)
+        brand_layout.addWidget(brand)
+        tagline = QLabel("Read · Explore · Remember")
+        tagline.setObjectName("tagline")
+        brand_layout.addWidget(tagline)
+        layout.addWidget(brand_box)
         layout.addStretch(1)
 
         self.research_button = QPushButton("Research")
+        self.research_button.setProperty("nav", True)
         self.research_button.setObjectName("toggleResearch")
         self.research_button.setCheckable(True)
         self.research_button.setToolTip("Show or hide research (Ctrl+Shift+R)")
         self.research_button.toggled.connect(self._toggle_research)
         layout.addWidget(self.research_button)
         self.explore_button = QPushButton("Explore")
+        self.explore_button.setProperty("nav", True)
         self.explore_button.setObjectName("toggleExplore")
         self.explore_button.setCheckable(True)
         self.explore_button.toggled.connect(self._toggle_explore)
         layout.addWidget(self.explore_button)
-        self.investigate_button = QPushButton("Investigate")
+        self.investigate_button = QPushButton("Discuss")
+        self.investigate_button.setProperty("nav", True)
         self.investigate_button.setObjectName("toggleInvestigate")
+        self.investigate_button.setToolTip("Ask questions and test interpretations")
         self.investigate_button.setCheckable(True)
         self.investigate_button.toggled.connect(self._toggle_investigate)
         layout.addWidget(self.investigate_button)
         self.lenses_button = QPushButton("Lenses")
+        self.lenses_button.setProperty("nav", True)
         self.lenses_button.setObjectName("toggleLenses")
         self.lenses_button.setCheckable(True)
         self.lenses_button.toggled.connect(lambda checked: self.lenses.setVisible(checked))
         layout.addWidget(self.lenses_button)
-        self.conversation_button = QPushButton("Process Conversation")
+        self.conversation_button = QPushButton("Conversations")
+        self.conversation_button.setProperty("nav", True)
         self.conversation_button.setObjectName("processConversation")
+        self.conversation_button.setToolTip("Import and review study conversations")
         self.conversation_button.setCheckable(True)
         self.conversation_button.toggled.connect(lambda checked: self.conversation.setVisible(checked))
         layout.addWidget(self.conversation_button)
-        self.discovery_button = QPushButton("Discover Connections")
+        self.discovery_button = QPushButton("Discover")
+        self.discovery_button.setProperty("nav", True)
         self.discovery_button.setObjectName("discoverConnections")
+        self.discovery_button.setToolTip("Find possible connections without saving automatically")
         self.discovery_button.setCheckable(True)
         self.discovery_button.toggled.connect(lambda checked: self.discovery.setVisible(checked))
         layout.addWidget(self.discovery_button)
@@ -719,6 +736,30 @@ def _stylesheet(c, serif, sans):
             font-family: "{serif}";
             font-size: 22pt;
             color: {c["ink"]};
+        }}
+        QLabel#tagline {{
+            color: {c["soft"]};
+            font-size: 8pt;
+            letter-spacing: 1px;
+        }}
+        QPushButton[nav="true"] {{
+            background: transparent;
+            border: 0;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
+            color: {c["soft"]};
+            font-size: 9pt;
+            font-weight: 600;
+            padding: 10px 9px 8px;
+        }}
+        QPushButton[nav="true"]:hover {{
+            color: {c["ink"]};
+            background: {c["selected"]};
+        }}
+        QPushButton[nav="true"]:checked {{
+            color: {c["accent"]};
+            border-bottom-color: {c["accent"]};
+            background: transparent;
         }}
         QLabel[role="panelTitle"] {{ font-family: "{serif}"; font-size: 21pt; }}
         QLabel[role="section"] {{ font-weight: 600; }}
