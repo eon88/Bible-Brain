@@ -23,8 +23,8 @@ from uuid import uuid4
 log = logging.getLogger(__name__)
 
 APPLICATION_ID = 0x4242524E  # BBRN
-SCHEMA_VERSION = 10
-MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql", "008_lenses_contradictions.sql", "009_conversations.sql", "010_discovery_fts.sql")
+SCHEMA_VERSION = 11
+MIGRATIONS = ("001_foundation.sql", "002_original_languages.sql", "003_original_token_variants.sql", "004_original_variant_identity.sql", "005_language_provenance.sql", "006_knowledge_graph.sql", "007_workspace_control.sql", "008_lenses_contradictions.sql", "009_conversations.sql", "010_discovery_fts.sql", "011_fts_triggers.sql")
 BACKUP_BUSY_SECONDS = 5
 NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 KEEP_FOLDER = object()
@@ -677,7 +677,6 @@ class Database:
         query = _require_text(query, "Search text").strip()
         like = f"%{query}%"
         if query:
-            self.rebuild_search_index()
             try:
                 return self._connection.execute("""SELECT DISTINCT k.id,k.kind,k.title,k.body,k.status,n.folder_id
                     FROM research_fts f JOIN knowledge_objects k ON k.id=f.object_id LEFT JOIN notes n ON n.object_id=k.id LEFT JOIN note_labels nl ON nl.note_id=k.id
@@ -917,6 +916,11 @@ class Database:
             if status == "approved" and row["target_object_id"] is None:
                 oid=self._insert_object(row["kind"] if row["kind"] in {"observation","question","interpretation","conclusion","concept"} else "observation", title or row["title"], body or row["body"], "ai", source_detail=json.dumps({"conversation_id":row["conversation_id"],"proposal_id":proposal_id,"excerpt":row["excerpt"]}))
                 self._connection.execute("UPDATE conversation_proposals SET target_object_id=? WHERE id=?",(oid,proposal_id)); self._connection.execute("INSERT INTO knowledge_reviews(id,object_id,status,reviewer,reason) VALUES(?,?,?,?,?)",(uuid4().hex,oid,status,reviewer,reason))
+                for ref in json.loads(row["references_json"]):
+                    try:
+                        book, pos = ref.split(); chapter, verse = pos.split(":"); anchor_id=self._anchor_id(ScriptureAnchor(book,int(chapter),int(verse))); self._insert_relationship(oid,anchor_id,"study_citation",origin="ai",source_detail=f"conversation:{row['conversation_id']}")
+                    except (ValueError, TypeError):
+                        continue
             elif row["target_object_id"]:
                 self._connection.execute("INSERT INTO knowledge_reviews(id,object_id,status,reviewer,reason) VALUES(?,?,?,?,?)",(uuid4().hex,row["target_object_id"],status,reviewer,reason))
 
