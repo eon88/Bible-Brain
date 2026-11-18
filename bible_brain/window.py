@@ -66,6 +66,9 @@ class MainWindow(QMainWindow):
         self._quote_key = None
         self._quote_verses = {}
         self.reader_mode = "Reading"
+        self.trace_session_id = None
+        self.trace_members = []
+        self.trace_index = 0
         self.setWindowTitle("Bible Brain")
         self.setObjectName("mainWindow")
         self.setMinimumSize(640, 545)
@@ -313,6 +316,26 @@ class MainWindow(QMainWindow):
         selection_layout.addWidget(button("New note", "newSelectionNote", self._note_from_selection, "primary"))
         layout.addWidget(self.selection_bar)
         self.selection_bar.hide()
+        self.trace_nav = QFrame()
+        self.trace_nav.setObjectName("traceNavigator")
+        trace_layout = QHBoxLayout(self.trace_nav)
+        trace_layout.setContentsMargins(24, 6, 24, 6)
+        self.trace_title = QLabel("Trace")
+        self.trace_progress = QLabel()
+        self.trace_passage = QComboBox()
+        self.trace_passage.setObjectName("tracePassageList")
+        self.trace_passage.currentIndexChanged.connect(self._trace_passage_changed)
+        self.trace_previous = button("Previous", "tracePrevious", lambda: self._trace_step(-1), "quiet")
+        self.trace_next = button("Next", "traceNext", lambda: self._trace_step(1), "quiet")
+        self.trace_close = button("Close", "closeTrace", self._close_trace_session, "quiet")
+        trace_layout.addWidget(self.trace_title)
+        trace_layout.addWidget(self.trace_progress)
+        trace_layout.addWidget(self.trace_passage, 1)
+        trace_layout.addWidget(self.trace_previous)
+        trace_layout.addWidget(self.trace_next)
+        trace_layout.addWidget(self.trace_close)
+        layout.addWidget(self.trace_nav)
+        self.trace_nav.hide()
         return scripture
 
     def _change_reader_mode(self, mode):
@@ -511,8 +534,19 @@ class MainWindow(QMainWindow):
         self._trace_active = bool(trace_id)
         self.discovery.set_trace(trace_id)
         if not trace_id:
+            self._close_trace_session()
             self.reader.highlight_verses([])
             return
+        self.trace_session_id = trace_id
+        self.trace_members = [row for row in self.database.trace_members(trace_id) if row["verse_id"]]
+        self.trace_index = 0
+        if self.selection:
+            selected = self.database.scripture_anchor(self.selection[0])
+            for index, row in enumerate(self.trace_members):
+                if row["id"] == selected:
+                    self.trace_index = index
+                    break
+        self._refresh_trace_navigator()
         verses = []
         for row in self.database.trace_members(trace_id):
             if row["verse_id"]:
@@ -520,6 +554,49 @@ class MainWindow(QMainWindow):
                 if book == self.reader.book and int(chapter) == self.reader.chapter:
                     verses.append(int(verse))
         self.reader.highlight_verses(verses, "#e8d7a5")
+
+    def _refresh_trace_navigator(self):
+        if not self.trace_session_id or not self.trace_members:
+            self.trace_nav.hide()
+            return
+        trace = next((row for row in self.database.traces() if row["id"] == self.trace_session_id), None)
+        self.trace_title.setText(trace["title"] if trace else "Trace")
+        self.trace_progress.setText(f"{self.trace_index + 1} of {len(self.trace_members)}")
+        self.trace_passage.blockSignals(True)
+        self.trace_passage.clear()
+        self.trace_passage.addItems([row["verse_id"] or row["title"] for row in self.trace_members])
+        self.trace_passage.setCurrentIndex(self.trace_index)
+        self.trace_passage.blockSignals(False)
+        self.trace_previous.setEnabled(self.trace_index > 0)
+        self.trace_next.setEnabled(self.trace_index < len(self.trace_members) - 1)
+        self.trace_nav.show()
+
+    def _trace_step(self, direction):
+        destination = self.trace_index + direction
+        if not (0 <= destination < len(self.trace_members)):
+            return
+        self.trace_index = destination
+        self._navigate_trace_member()
+
+    def _trace_passage_changed(self, index):
+        if 0 <= index < len(self.trace_members) and index != self.trace_index:
+            self.trace_index = index
+            self._navigate_trace_member()
+
+    def _navigate_trace_member(self):
+        value = self.trace_members[self.trace_index]["verse_id"]
+        if not value:
+            return
+        book, chapter, verse = value.split(":")
+        translation = self.edition.currentData()
+        if self._goto_chapter(translation, book, int(chapter)):
+            self.reader.select_anchor(ScriptureAnchor(book, int(chapter), int(verse), translation))
+        self._refresh_trace_navigator()
+
+    def _close_trace_session(self):
+        self.trace_session_id = None
+        self.trace_members = []
+        self.trace_nav.hide()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
