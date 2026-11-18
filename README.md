@@ -5,8 +5,8 @@ Bible Brain is a standalone, offline Scripture reader and personal research work
 ## Run on Windows 11 x64
 
 - **Portable build** — open `dist\Bible Brain\Bible Brain.exe`. Keep `_internal` alongside the executable.
-- **Install for your account** — open `dist\Bible-Brain-Setup-0.1.0-x64-user.msi`. Windows Installer installs the app in `%LOCALAPPDATA%\Programs\Bible Brain` and adds desktop and Start menu shortcuts for your Windows account.
-- **Install for all users** — open `dist\Bible-Brain-Setup-0.1.0-x64.msi`. This installs into Program Files and requires administrator approval. Both development installers are unsigned.
+- **Install for your account** — open `dist\Bible-Brain-Setup-0.2.0-x64-user.msi`. Windows Installer installs the app in `%LOCALAPPDATA%\Programs\Bible Brain` and adds desktop and Start menu shortcuts for your Windows account.
+- **Install for all users** — open `dist\Bible-Brain-Setup-0.2.0-x64.msi`. This installs into Program Files and requires administrator approval. Both development installers are unsigned.
 
 The packaged app includes Python, Qt and Scripture. It opens without an internet connection or a separate runtime installation. The default data directory is `%LOCALAPPDATA%\Bible Brain`, which contains `library.sqlite3`, preferences and rotating diagnostic logs. The installer manages the program files. Each library and any backup files you create are stored separately.
 

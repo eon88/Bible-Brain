@@ -47,7 +47,7 @@ class OllamaProvider:
         try:
             with request.urlopen(request.Request(self.base_url + "/api/tags"), timeout=3) as response:
                 payload = json.loads(response.read().decode("utf-8"))
-            return [row["name"] for row in payload.get("models", []) if isinstance(row, dict) and row.get("name")]
+            return [row["name"] for row in payload.get("models", []) if isinstance(row, dict) and row.get("name") and "embedding" not in row["name"].lower()]
         except (OSError, ValueError, KeyError, TypeError):
             return []
 
