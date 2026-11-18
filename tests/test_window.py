@@ -170,3 +170,14 @@ class WindowTests(unittest.TestCase):
         self.assertTrue(self.window.mapping_panel.isVisible())
         self.window.mode_selector.setCurrentText("Reading")
         self.assertTrue(self.window.reader.isVisible())
+
+    def test_companion_adapts_to_bottom_sheet_at_narrow_width(self):
+        self.window.resize(700, 760)
+        self.window._show_study()
+        self.app.processEvents()
+        self.assertEqual(self.window.splitter.orientation(), Qt.Orientation.Vertical)
+        self.assertTrue(self.window.graph.isVisible())
+        sizes = self.window.splitter.sizes()
+        self.assertGreaterEqual(len(sizes), 2)
+        self.assertGreater(sizes[0], 0)
+        self.assertGreater(sizes[self.window.splitter.indexOf(self.window.graph)], 0)

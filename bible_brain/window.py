@@ -510,6 +510,25 @@ class MainWindow(QMainWindow):
         self.graph.setVisible(True)
         self.graph.set_selection(self.selection)
         self.graph.tabs.setCurrentIndex(index)
+        self._size_companion()
+
+    def _size_companion(self):
+        if not self.graph.isVisible():
+            return
+        if self.splitter.orientation() == Qt.Orientation.Horizontal:
+            width = self.splitter.width()
+            side = min(520, max(360, width // 3))
+            sizes = [0] * self.splitter.count()
+            sizes[0] = max(320, width - side)
+            sizes[self.splitter.indexOf(self.graph)] = side
+            self.splitter.setSizes(sizes)
+        else:
+            height = self.splitter.height()
+            sheet = min(500, max(280, height // 2))
+            sizes = [0] * self.splitter.count()
+            sizes[0] = max(260, height - sheet)
+            sizes[self.splitter.indexOf(self.graph)] = sheet
+            self.splitter.setSizes(sizes)
 
     def _explore_selection(self):
         if self.selection:
@@ -691,6 +710,8 @@ class MainWindow(QMainWindow):
             self.splitter.setOrientation(orientation)
             if self.workspace.isVisible():
                 self._toggle_research(True)
+            if self.graph.isVisible():
+                self._size_companion()
 
     def reload_database(self):
         self._reload_editions()
