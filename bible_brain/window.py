@@ -754,6 +754,9 @@ class MainWindow(QMainWindow):
 
     def _reload_editions(self):
         previous = self._location()
+        saved = self.session.ui_state.get("reader_location", {})
+        if not previous[0] and saved.get("translation"):
+            previous = (saved.get("translation"), saved.get("book"), saved.get("chapter"))
         self.book_names.clear()
         self._quote_key = None
         rows = self.database.translations()
@@ -768,6 +771,9 @@ class MainWindow(QMainWindow):
         for control in (self.edition, self.book, self.chapter):
             control.setEnabled(bool(rows))
         self._change_translation(preferred=previous[1:])
+        if saved.get("scroll_ratio") is not None:
+            ratio = max(0.0, min(1.0, float(saved["scroll_ratio"])))
+            self.reader.verticalScrollBar().setValue(round(ratio * self.reader.verticalScrollBar().maximum()))
 
     def _location(self):
         return self.edition.currentData(), self.book.currentData(), self.chapter.currentData()
@@ -1154,6 +1160,15 @@ class MainWindow(QMainWindow):
                 )
             except DATA_ERRORS as error:
                 self.show_error("Could not restore the database", error)
+
+    def closeEvent(self, event):
+        translation, book, chapter = self._location()
+        scrollbar = self.reader.verticalScrollBar()
+        ratio = scrollbar.value() / max(1, scrollbar.maximum())
+        self.session.update_ui_state(reader_location={
+            "translation": translation, "book": book, "chapter": chapter, "scroll_ratio": ratio,
+        })
+        super().closeEvent(event)
 
     def notify(self, message):
         self.statusBar().showMessage(message, 4200)
