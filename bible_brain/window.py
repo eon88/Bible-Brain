@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         self.trace_session_id = None
         self.trace_members = []
         self.trace_index = 0
+        self.trace_origin = None
         self.continuous_chapters = []
         self.setWindowTitle("Bible Brain")
         self.setObjectName("mainWindow")
@@ -349,7 +350,7 @@ class MainWindow(QMainWindow):
         self.trace_passage.currentIndexChanged.connect(self._trace_passage_changed)
         self.trace_previous = button("Previous", "tracePrevious", lambda: self._trace_step(-1), "quiet")
         self.trace_next = button("Next", "traceNext", lambda: self._trace_step(1), "quiet")
-        self.trace_close = button("Close", "closeTrace", self._close_trace_session, "quiet")
+        self.trace_close = button("Close", "closeTrace", self._close_trace_from_reader, "quiet")
         trace_layout.addWidget(self.trace_title)
         trace_layout.addWidget(self.trace_progress)
         trace_layout.addWidget(self.trace_passage, 1)
@@ -604,9 +605,14 @@ class MainWindow(QMainWindow):
         self._trace_active = bool(trace_id)
         self.discovery.set_trace(trace_id)
         if not trace_id:
-            self._close_trace_session()
+            self._close_trace_session(restore=True)
             self.reader.highlight_verses([])
             return
+        if self.trace_session_id is None and self.selection:
+            origin = self.selection[0]
+            self.trace_origin = ScriptureAnchor(
+                origin.book, origin.chapter, origin.verse, origin.translation, origin.start, origin.end
+            )
         self.trace_session_id = trace_id
         self.trace_members = [row for row in self.database.trace_members(trace_id) if row["verse_id"]]
         self.trace_index = 0
@@ -663,10 +669,20 @@ class MainWindow(QMainWindow):
             self.reader.select_anchor(ScriptureAnchor(book, int(chapter), int(verse), translation))
         self._refresh_trace_navigator()
 
-    def _close_trace_session(self):
+    def _close_trace_session(self, restore=False):
+        origin = self.trace_origin
         self.trace_session_id = None
         self.trace_members = []
+        self.trace_origin = None
         self.trace_nav.hide()
+        if restore and origin is not None:
+            self._open_reference(origin)
+
+    def _close_trace_from_reader(self):
+        if self.graph.active.isChecked():
+            self.graph.active.setChecked(False)
+        else:
+            self._close_trace_session(restore=True)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
