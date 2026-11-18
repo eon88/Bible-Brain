@@ -467,6 +467,19 @@ class MainWindow(QMainWindow):
                             parts = candidate.split(":")
                             if len(parts) == 3 and parts[0] == book and int(parts[1]) == int(chapter):
                                 marked.add(int(parts[2]))
+        if translation and book and chapter and filters.get("traces", True):
+            for trace in self.database.traces():
+                for member in self.database.trace_members(trace["id"]):
+                    verse_id = member["verse_id"]
+                    if verse_id:
+                        parts = verse_id.split(":")
+                        if len(parts) == 3 and parts[0] == book and int(parts[1]) == int(chapter) and member["status"] not in ("rejected", "parked"):
+                            marked.add(int(parts[2]))
+        if translation and book and chapter and filters.get("studies", True):
+            for study in self.database.studies():
+                for anchor in self.database.note_anchors(study["id"]):
+                    if anchor["book"] == book and int(anchor["chapter"]) == int(chapter) and anchor["translation"] == translation:
+                        marked.add(int(anchor["verse"]))
         self.reader.highlight_verses(sorted(marked), "#e8d7a5")
 
     def _jump_reference(self):
