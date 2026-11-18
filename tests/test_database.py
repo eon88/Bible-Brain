@@ -254,6 +254,9 @@ class DatabaseTests(unittest.TestCase):
         trace = db.create_trace("Tree of Life", "Lost and restored access", "#4f7d4a")
         db.add_trace_member(trace, a); db.add_trace_member(trace, b); db.add_trace_member(trace, c); db.add_trace_member(trace, d)
         self.assertEqual(len(db.trace_members(trace)), 4)
+        members = db.trace_members(trace)
+        db.move_trace_member(members[-1]["relationship_id"], 0)
+        self.assertEqual(db.trace_members(trace)[0]["relationship_id"], members[-1]["relationship_id"])
         study = db.create_study("Tree of Life study", "Access", "Genesis loss", "How is access restored?", conclusions="Restoration", anchors=[ScriptureAnchor("REV", 2, 7, "TEST", 0, 12), ScriptureAnchor("REV", 22, 2)], trace_ids=[trace])
         self.assertEqual(db.study(study)["summary"], "Access")
         original_revision = db.note_revisions(study)[0]["id"]
