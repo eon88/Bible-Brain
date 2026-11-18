@@ -1139,6 +1139,15 @@ class Database:
             self._update_note(current, title, body, folder_id, anchor_ids, None if label_ids is None else set(label_ids))
         return note_id
 
+    def add_note_anchors(self, note_id: str, anchors=()) -> None:
+        """Attach additional exact Scripture anchors without changing note content."""
+        with _transaction(self._connection):
+            self.note(note_id)
+            existing = set(self._note_anchor_ids(note_id))
+            existing.update(self._anchor_id(anchor) for anchor in anchors)
+            self._replace_note_anchors(note_id, existing)
+            self._snapshot_note(note_id)
+
     def note_revisions(self, note_id: str) -> list[sqlite3.Row]:
         return self._connection.execute(
             """SELECT id, title, body, folder_id, folder_name, summary, observations, questions, interpretations, conclusions, created_at FROM note_revisions

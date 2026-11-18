@@ -624,8 +624,28 @@ class MainWindow(QMainWindow):
         title, ok = QInputDialog.getText(self, "Create research subject", "Name")
         if not ok or not title.strip():
             return
+        title = title.strip()
+        matches = [row for row in self.database.notes() if row["title"].casefold() == title.casefold()]
+        if matches:
+            choice = QMessageBox(self)
+            choice.setWindowTitle("Research subject already exists")
+            choice.setText(f"A research subject named ‘{title}’ already exists.")
+            reuse = choice.addButton("Reuse / link existing", QMessageBox.ButtonRole.AcceptRole)
+            separate = choice.addButton("Create separate", QMessageBox.ButtonRole.DestructiveRole)
+            choice.addButton(QMessageBox.StandardButton.Cancel)
+            choice.exec()
+            if choice.clickedButton() is reuse:
+                try:
+                    self.database.add_note_anchors(matches[0]["id"], self.selection)
+                    self.workspace.refresh()
+                    self.notify("Existing research subject linked")
+                except DATA_ERRORS as error:
+                    self.show_error("Could not link the research subject", error)
+                return
+            if choice.clickedButton() is not separate:
+                return
         try:
-            self.database.create_note(title.strip(), "", anchors=self.selection)
+            self.database.create_note(title, "", anchors=self.selection)
             self.workspace.refresh()
             self.notify("Research subject saved")
         except DATA_ERRORS as error:
