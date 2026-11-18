@@ -513,6 +513,9 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Alt+Left"), self, activated=lambda: self._step(-1))
         QShortcut(QKeySequence("Alt+Right"), self, activated=lambda: self._step(1))
         QShortcut(QKeySequence("Ctrl+Shift+R"), self, activated=self.research_button.toggle)
+        QShortcut(QKeySequence("Alt+1"), self, activated=lambda: self.mode_selector.setCurrentText("Reading"))
+        QShortcut(QKeySequence("Alt+2"), self, activated=lambda: self.mode_selector.setCurrentText("Exploration"))
+        QShortcut(QKeySequence("Alt+3"), self, activated=lambda: self.mode_selector.setCurrentText("Mapping"))
         QShortcut(QKeySequence("Ctrl+,"), self, activated=self._show_settings)
         QShortcut(QKeySequence("Ctrl+S"), self, activated=self._save_note_shortcut)
 
