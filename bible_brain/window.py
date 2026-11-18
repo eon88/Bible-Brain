@@ -698,6 +698,8 @@ class MainWindow(QMainWindow):
             self._close_trace_session(restore=True)
             self.reader.highlight_verses([])
             return
+        trace_row = next((row for row in self.database.traces() if row["id"] == trace_id), None)
+        trace_color = trace_row["color"] if trace_row and trace_row["color"] else "#e8d7a5"
         if self.trace_session_id is None and self.selection:
             origin = self.selection[0]
             self.trace_origin = ScriptureAnchor(
@@ -719,7 +721,7 @@ class MainWindow(QMainWindow):
                 book, chapter, verse = row["verse_id"].split(":")
                 if book == self.reader.book and int(chapter) == self.reader.chapter:
                     verses.append(int(verse))
-        self.reader.highlight_verses(verses, "#e8d7a5")
+        self.reader.highlight_verses(verses, trace_color)
 
     def _refresh_trace_navigator(self):
         if not self.trace_session_id or not self.trace_members:
