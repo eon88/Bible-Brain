@@ -104,7 +104,7 @@ class GraphWorkspace(QWidget):
     def _trace_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Named traces"),1); top.addWidget(button("Create trace","createTrace",self._create_trace,"primary")); l.addLayout(top)
         self.traces=QListWidget(); self.traces.setObjectName("traceList"); self.traces.currentItemChanged.connect(lambda *_: self._refresh_trace_members()); l.addWidget(self.traces,1)
-        controls=QHBoxLayout(); controls.addWidget(button("Add to trace","addToTrace",self._add_to_trace)); self.active=QPushButton("Activate"); self.active.setCheckable(True); self.active.toggled.connect(self._toggle_trace); controls.addWidget(self.active); l.addLayout(controls)
+        controls=QHBoxLayout(); controls.addWidget(button("Add to trace","addToTrace",self._add_to_trace)); controls.addWidget(button("Move up","moveTraceUp",lambda: self._move_trace_member(-1))); controls.addWidget(button("Move down","moveTraceDown",lambda: self._move_trace_member(1))); self.active=QPushButton("Activate"); self.active.setCheckable(True); self.active.toggled.connect(self._toggle_trace); controls.addWidget(self.active); l.addLayout(controls)
         self.trace_members_view=QListWidget(); self.trace_members_view.setObjectName("traceMembers"); self.trace_members_view.itemDoubleClicked.connect(self._open_trace_member); l.addWidget(self.trace_members_view,1); return w
     def _refresh_traces(self):
         if not hasattr(self,'traces'): return
@@ -132,6 +132,16 @@ class GraphWorkspace(QWidget):
             for anchor in self.selection: self.database.add_trace_member(tid,self.database.scripture_anchor(anchor),self.database.trace_members(tid).__len__())
             self._refresh_trace_members(); self.notify("Added to trace")
         except DATA_ERRORS as error: self.show_error("Could not add to trace",error)
+
+    def _move_trace_member(self, direction):
+        item=self.trace_members_view.currentItem(); tid=self._selected_trace()
+        if not item or not tid: return
+        rows=self.database.trace_members(tid); current=self.trace_members_view.currentRow(); destination=current+direction
+        if not (0 <= destination < len(rows)): return
+        try:
+            self.database.move_trace_member(item.data(Qt.ItemDataRole.UserRole), destination)
+            self._refresh_trace_members(); self.trace_members_view.setCurrentRow(destination)
+        except DATA_ERRORS as error: self.show_error("Could not reorder the trace",error)
     def _toggle_trace(self,checked):
         self.active_trace=self._selected_trace() if checked else None; self.active.setText("Deactivate" if checked else "Activate"); self.traceChanged.emit(self.active_trace)
     def _open_trace_member(self,item):

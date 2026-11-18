@@ -623,6 +623,17 @@ class Database:
             a.verse_id FROM knowledge_relationships r JOIN knowledge_objects k ON k.id=r.to_id
             LEFT JOIN scripture_anchors a ON a.object_id=k.id WHERE r.from_id=? AND r.type='trace_member' ORDER BY r.position, r.created_at""", (trace_id,)).fetchall()
 
+    def move_trace_member(self, relationship_id: str, position: int) -> None:
+        _require_integer(position, "Trace member position", 0)
+        with _transaction(self._connection):
+            row = self._connection.execute("SELECT from_id FROM knowledge_relationships WHERE id=? AND type='trace_member'", (relationship_id,)).fetchone()
+            if row is None:
+                raise ValueError("The trace member no longer exists.")
+            members = self.trace_members(row["from_id"])
+            ordered = [member["relationship_id"] for member in members if member["relationship_id"] != relationship_id]
+            ordered.insert(min(position, len(ordered)), relationship_id)
+            self._connection.executemany("UPDATE knowledge_relationships SET position=? WHERE id=?", ((index, member_id) for index, member_id in enumerate(ordered)))
+
     def create_study(self, title, summary="", observations="", questions="", interpretations="", conclusions="", folder_id=None, anchors=(), trace_ids=(), label_ids=None) -> str:
         title = _require_name(title, "Study title")
         fields = [_require_text(x, label) for x, label in ((summary,"Summary"),(observations,"Observations"),(questions,"Questions"),(interpretations,"Interpretations"),(conclusions,"Conclusions"))]
