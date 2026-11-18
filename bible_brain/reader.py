@@ -72,6 +72,8 @@ class ChapterReader(QTextBrowser):
         self.verse_highlight = "#ede7dc"
         self.serif = serif
         self.sans = sans
+        self.line_spacing = 137
+        self.reading_width = 650
 
     def show_message(self, title, description, colors):
         self.spans.clear()
@@ -96,7 +98,7 @@ class ChapterReader(QTextBrowser):
         block.setLeftMargin(36)
         block.setTextIndent(-36)
         block.setBottomMargin(11)
-        block.setLineHeight(137, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+        block.setLineHeight(self.line_spacing, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
         tab = QTextOption.Tab()
         tab.position = 36
         block.setTabPositions([tab])
@@ -137,7 +139,7 @@ class ChapterReader(QTextBrowser):
     def _update_margins(self):
         frame = self.document().rootFrame()
         frame_format = frame.frameFormat()
-        side = max(18, (self.viewport().width() - 650) // 2)
+        side = max(18, (self.viewport().width() - self.reading_width) // 2)
         frame_format.setLeftMargin(side)
         frame_format.setRightMargin(side)
         frame_format.setTopMargin(38)

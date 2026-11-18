@@ -285,6 +285,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(toolbar)
 
         self.reader = ChapterReader(self.serif, self.sans)
+        self.reader.line_spacing = self.session.line_spacing
+        self.reader.reading_width = self.session.reading_width
         self.reader.scriptureSelected.connect(self._set_selection)
         layout.addWidget(self.reader, 1)
 
@@ -841,6 +843,10 @@ class MainWindow(QMainWindow):
         size.setSuffix(" pt")
         size.setValue(self.session.text_size)
         appearance_form.addRow("Reader text", size)
+        spacing = QSpinBox(); spacing.setObjectName("readerLineSpacing"); spacing.setRange(110, 190); spacing.setSuffix("%"); spacing.setValue(self.session.line_spacing)
+        appearance_form.addRow("Line spacing", spacing)
+        width = QSpinBox(); width.setObjectName("readerWidth"); width.setRange(520, 900); width.setSuffix(" px"); width.setValue(self.session.reading_width)
+        appearance_form.addRow("Reading width", width)
         layout.addLayout(appearance_form)
 
         layout.addSpacing(10)
@@ -879,7 +885,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(footer)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             try:
-                self.session.set_appearance(appearance.currentText(), size.value())
+                self.session.set_appearance(appearance.currentText(), size.value(), spacing.value(), width.value())
+                self.reader.line_spacing = self.session.line_spacing
+                self.reader.reading_width = self.session.reading_width
                 self._refresh_appearance()
             except DATA_ERRORS as error:
                 self.show_error("Could not save appearance settings", error)

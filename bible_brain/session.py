@@ -26,6 +26,8 @@ class Preferences:
     appearance: str = "System"
     text_size: int = 19
     ui_state: dict = None
+    line_spacing: int = 137
+    reading_width: int = 650
 
     @classmethod
     def from_file(cls, path: Path, default_database: Path) -> "Preferences":
@@ -46,7 +48,13 @@ class Preferences:
         ui_state = data.get("ui_state", {})
         if not isinstance(ui_state, dict):
             ui_state = {}
-        return cls(database, appearance, text_size, ui_state)
+        line_spacing = data.get("line_spacing", 137)
+        reading_width = data.get("reading_width", 650)
+        if type(line_spacing) is not int or not 110 <= line_spacing <= 190:
+            line_spacing = 137
+        if type(reading_width) is not int or not 520 <= reading_width <= 900:
+            reading_width = 650
+        return cls(database, appearance, text_size, ui_state, line_spacing, reading_width)
 
 
 def _validate_appearance(appearance: str, text_size: int) -> tuple[str, int]:
@@ -79,6 +87,14 @@ class Session:
     @property
     def text_size(self) -> int:
         return self._preferences.text_size
+
+    @property
+    def line_spacing(self) -> int:
+        return self._preferences.line_spacing
+
+    @property
+    def reading_width(self) -> int:
+        return self._preferences.reading_width
 
     @property
     def ui_state(self) -> dict:
@@ -124,9 +140,11 @@ class Session:
                 temporary.unlink(missing_ok=True)
         self._preferences = preferences
 
-    def set_appearance(self, appearance: str, text_size: int) -> None:
+    def set_appearance(self, appearance: str, text_size: int, line_spacing: int | None = None, reading_width: int | None = None) -> None:
         appearance, text_size = _validate_appearance(appearance, text_size)
-        self._save(replace(self._preferences, appearance=appearance, text_size=text_size))
+        line_spacing = self.line_spacing if line_spacing is None else max(110, min(190, int(line_spacing)))
+        reading_width = self.reading_width if reading_width is None else max(520, min(900, int(reading_width)))
+        self._save(replace(self._preferences, appearance=appearance, text_size=text_size, line_spacing=line_spacing, reading_width=reading_width))
 
     def _database_file(self, path: Path) -> Path:
         path = Path(path).expanduser().resolve()
