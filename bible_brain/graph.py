@@ -154,7 +154,24 @@ class GraphWorkspace(QWidget):
         try: self.database.create_study(title.text(),summary.toPlainText(),observations.toPlainText(),questions.toPlainText(),conclusions=conclusions.toPlainText(),anchors=self.selection); self._refresh_studies(); self.notify("Study saved")
         except DATA_ERRORS as error: self.show_error("Could not create the study",error)
     def _open_study(self,item):
-        row=self.database.study(item.data(Qt.ItemDataRole.UserRole)); QMessageBox.information(self,"Study",f"{row['title']}\n\n{row['summary']}\n\nObservations\n{row['observations']}\n\nQuestions\n{row['questions']}\n\nConclusions\n{row['conclusions']}")
+        study_id=item.data(Qt.ItemDataRole.UserRole); row=self.database.study(study_id)
+        dialog=QDialog(self); dialog.setWindowTitle(row["title"]); dialog.resize(620, 620)
+        layout=QVBoxLayout(dialog); heading=QLabel(row["title"]); heading.setProperty("role","panelTitle"); layout.addWidget(heading)
+        text=QPlainTextEdit(); text.setReadOnly(True)
+        sections=[]
+        for label,key in (("Summary","summary"),("Observations","observations"),("Questions","questions"),("Interpretations","interpretations"),("Conclusions","conclusions")):
+            if row[key]: sections.append(f"{label}\n{row[key]}")
+        anchors=self.database.note_anchors(study_id)
+        if anchors: sections.append("Connected Scripture\n"+"\n".join(f"{a['book']} {a['chapter']}:{a['verse']}" for a in anchors))
+        text.setPlainText("\n\n".join(sections) or "This study is empty."); layout.addWidget(text,1)
+        controls=QHBoxLayout(); controls.addWidget(button("Edit", "openStudyEdit", lambda: (dialog.accept(), self._select_study_for_edit(study_id))))
+        controls.addStretch(1); controls.addWidget(button("Close", "closeStudy", dialog.accept)); layout.addLayout(controls); dialog.exec()
+
+    def _select_study_for_edit(self, study_id):
+        for index in range(self.study_list.count()):
+            item=self.study_list.item(index)
+            if item.data(Qt.ItemDataRole.UserRole)==study_id:
+                self.study_list.setCurrentItem(item); self._edit_study(); return
 
     def _selected_study(self):
         item=self.study_list.currentItem(); return item.data(Qt.ItemDataRole.UserRole) if item else None
