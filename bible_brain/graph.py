@@ -13,11 +13,35 @@ class GraphWorkspace(QWidget):
     traceChanged = Signal(object)
     def __init__(self, session, notify, show_error):
         super().__init__(); self.setObjectName("explorePanel"); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None
-        layout=QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12); head=QHBoxLayout(); title=QLabel("Study Companion"); title.setProperty("role","panelTitle"); head.addWidget(title); self.search=QLineEdit(); self.search.setPlaceholderText("Search your research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.setToolTip("Close Study Companion"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
-        self.tabs=QTabWidget(); self.tabs.setObjectName("companionTabs"); self.tabs.addTab(self._cross_panel(),"Connections"); self.tabs.addTab(self._trace_panel(),"Traces"); self.tabs.addTab(self._study_panel(),"Studies"); layout.addWidget(self.tabs)
+        layout=QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12); head=QHBoxLayout(); title=QLabel("Study Companion"); title.setProperty("role","panelTitle"); head.addWidget(title); self.pin_label=QLabel("No pinned investigation"); self.pin_label.setObjectName("companionPin"); head.addWidget(self.pin_label,1); self.history_button=button("History", "companionHistory", self._show_history, "quiet"); head.addWidget(self.history_button); self.search=QLineEdit(); self.search.setPlaceholderText("Search your research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.setToolTip("Close Study Companion"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
+        self.tabs=QTabWidget(); self.tabs.setObjectName("companionTabs"); self.tabs.addTab(self._cross_panel(),"Connections"); self.tabs.addTab(self._trace_panel(),"Traces"); self.tabs.addTab(self._study_panel(),"Studies"); self.tabs.currentChanged.connect(lambda index: self.session.update_ui_state(companion_tab=index)); layout.addWidget(self.tabs)
+        state=self.session.ui_state; pin=state.get("companion_pin")
+        if pin: self.pin_label.setText(f"Pinned · {pin.get('label','Investigation')}")
+        self.tabs.setCurrentIndex(int(state.get("companion_tab",0)) if str(state.get("companion_tab",0)).isdigit() else 0)
     @property
     def database(self): return self.session.database
     def set_selection(self, anchors): self.selection=list(anchors); self.refresh()
+    def pin_selection(self, anchors):
+        if not anchors: return
+        anchor=anchors[0]; pin={"book":anchor.book,"chapter":anchor.chapter,"verse":anchor.verse,"translation":anchor.translation,"label":f"{anchor.book} {anchor.chapter}:{anchor.verse}"}
+        state=self.session.ui_state; history=[item for item in state.get("companion_history",[]) if item.get("label") != pin["label"]]
+        history.insert(0,pin); self.session.update_ui_state(companion_pin=pin, companion_history=history[:50])
+        self.pin_label.setText(f"Pinned · {pin['label']}")
+    def _show_history(self):
+        history=self.session.ui_state.get("companion_history",[])
+        if not history:
+            QMessageBox.information(self,"Recent investigations","No recent investigations yet."); return
+        dialog=QDialog(self); dialog.setWindowTitle("Recent investigations"); layout=QVBoxLayout(dialog); items=QListWidget()
+        for entry in history:
+            item=QListWidgetItem(entry.get("label","Investigation")); item.setData(Qt.ItemDataRole.UserRole,entry); items.addItem(item)
+        layout.addWidget(items); actions=QHBoxLayout(); actions.addWidget(button("Open", "openInvestigation", lambda: self._open_history(items,dialog), "primary")); actions.addWidget(button("Clear history", "clearInvestigationHistory", lambda: self._clear_history(dialog))); layout.addLayout(actions); dialog.resize(360,420); dialog.exec()
+    def _open_history(self, items, dialog):
+        item=items.currentItem()
+        if not item: return
+        entry=item.data(Qt.ItemDataRole.UserRole); self.session.update_ui_state(companion_pin=entry); self.pin_label.setText(f"Pinned · {entry.get('label','Investigation')}"); dialog.accept(); self.refresh()
+    def _clear_history(self, dialog):
+        if QMessageBox.question(self,"Clear history","Remove recent navigation history only? Saved research will remain.",QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
+        self.session.update_ui_state(companion_history=[]); dialog.accept()
     def refresh(self): self._refresh_connections(); self._refresh_traces(); self._refresh_studies()
     def _search(self):
         rows=self.database.search_research(self.search.text())

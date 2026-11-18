@@ -25,6 +25,7 @@ class Preferences:
     database_path: str
     appearance: str = "System"
     text_size: int = 19
+    ui_state: dict = None
 
     @classmethod
     def from_file(cls, path: Path, default_database: Path) -> "Preferences":
@@ -42,7 +43,10 @@ class Preferences:
             )
         except (ValueError, UnicodeError) as error:
             raise ValueError(f"Settings could not be read from {path}. {error}") from error
-        return cls(database, appearance, text_size)
+        ui_state = data.get("ui_state", {})
+        if not isinstance(ui_state, dict):
+            ui_state = {}
+        return cls(database, appearance, text_size, ui_state)
 
 
 def _validate_appearance(appearance: str, text_size: int) -> tuple[str, int]:
@@ -75,6 +79,15 @@ class Session:
     @property
     def text_size(self) -> int:
         return self._preferences.text_size
+
+    @property
+    def ui_state(self) -> dict:
+        return dict(self._preferences.ui_state or {})
+
+    def update_ui_state(self, **changes) -> None:
+        state = self.ui_state
+        state.update(changes)
+        self._save(replace(self._preferences, ui_state=state))
 
     @staticmethod
     def _open_database(path: Path, install_bundled: bool = False) -> Database:

@@ -376,6 +376,7 @@ class MainWindow(QMainWindow):
 
     def _explore_selection(self):
         if self.selection:
+            self.graph.pin_selection(self.selection)
             self._open_companion_tab(0)
 
     def _trace_selection(self):
