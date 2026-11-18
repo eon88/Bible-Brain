@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
     QWidget,
+    QToolButton,
 )
 
 from .reader import ChapterReader
@@ -254,6 +256,21 @@ class MainWindow(QMainWindow):
         self.mode_selector.setCurrentText("Reading")
         self.mode_selector.currentTextChanged.connect(self._change_reader_mode)
         controls.addWidget(self.mode_selector)
+        self.filters_button = QToolButton()
+        self.filters_button.setObjectName("explorationFilters")
+        self.filters_button.setText("Filters")
+        self.filters_button.setToolTip("Choose which stored research markers appear in Exploration mode")
+        self.filters_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.filters_menu = QMenu(self.filters_button)
+        self.filter_actions = {}
+        for key, label in (("connections", "Connections"), ("traces", "Traces"), ("studies", "Studies")):
+            action = self.filters_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(self.session.ui_state.get("exploration_filters", {}).get(key, True))
+            action.toggled.connect(lambda checked, name=key: self._set_exploration_filter(name, checked))
+            self.filter_actions[key] = action
+        self.filters_button.setMenu(self.filters_menu)
+        controls.addWidget(self.filters_button)
         self.edition = self._combo("translationSelector", "Translation")
         self.edition.setMinimumContentsLength(5)
         self.edition.currentIndexChanged.connect(self._change_translation)
@@ -296,6 +313,36 @@ class MainWindow(QMainWindow):
             self.notify("Exploration mode: open Explore to inspect stored connections")
         else:
             self.notify("Mapping mode is ready for the selected passage")
+        self._refresh_exploration_overlays()
+
+    def _set_exploration_filter(self, name, checked):
+        filters = self.session.ui_state.get("exploration_filters", {"connections": True, "traces": True, "studies": True})
+        filters[name] = checked
+        self.session.update_ui_state(exploration_filters=filters)
+        self._refresh_exploration_overlays()
+
+    def _refresh_exploration_overlays(self):
+        if self.reader_mode != "Exploration":
+            if not getattr(self, "_trace_active", False):
+                self.reader.highlight_verses([])
+            return
+        filters = self.session.ui_state.get("exploration_filters", {"connections": True, "traces": True, "studies": True})
+        marked = set()
+        translation, book, chapter = self._location()
+        if translation and book and chapter and filters.get("connections", True):
+            for verse in self.database.verses(translation, book, chapter):
+                try:
+                    anchor_id = self.database.scripture_anchor(ScriptureAnchor(book, chapter, verse["number"], translation))
+                except Exception:
+                    continue
+                for row in self.database.knowledge_connections(anchor_id):
+                    if row["status"] not in ("rejected", "parked"):
+                        candidate = row["from_verse"] if row["from_id"] != anchor_id else row["to_verse"]
+                        if candidate:
+                            parts = candidate.split(":")
+                            if len(parts) == 3 and parts[0] == book and int(parts[1]) == int(chapter):
+                                marked.add(int(parts[2]))
+        self.reader.highlight_verses(sorted(marked), "#e8d7a5")
 
     def _jump_reference(self):
         value = self.reference_jump.text().strip().upper()
@@ -408,6 +455,7 @@ class MainWindow(QMainWindow):
             self.investigate.set_selection(self.selection)
 
     def _set_trace(self, trace_id):
+        self._trace_active = bool(trace_id)
         self.discovery.set_trace(trace_id)
         if not trace_id:
             self.reader.highlight_verses([])
@@ -494,6 +542,7 @@ class MainWindow(QMainWindow):
             translation, book, chapter, title, edition,
             self.database.verses(translation, book, chapter), self.session.text_size, self.colors,
         )
+        self._refresh_exploration_overlays()
         self.previous.setEnabled(self.database.next_chapter(translation, book, chapter, -1) is not None)
         self.next.setEnabled(self.database.next_chapter(translation, book, chapter, 1) is not None)
 
