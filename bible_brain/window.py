@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMenu,
     QMainWindow,
     QMessageBox,
@@ -289,6 +291,22 @@ class MainWindow(QMainWindow):
         self.reader.reading_width = self.session.reading_width
         self.reader.scriptureSelected.connect(self._set_selection)
         layout.addWidget(self.reader, 1)
+        self.mapping_panel = QFrame()
+        self.mapping_panel.setObjectName("mappingWorkspace")
+        mapping_layout = QVBoxLayout(self.mapping_panel)
+        mapping_head = QHBoxLayout()
+        mapping_head.addWidget(QLabel("Relationship map"), 1)
+        mapping_head.addWidget(button("Back to Bible", "mappingBack", lambda: self.mode_selector.setCurrentText("Reading"), "primary"))
+        mapping_layout.addLayout(mapping_head)
+        self.mapping_hint = QLabel("Select a passage, then enter Mapping to inspect stored relationships.")
+        self.mapping_hint.setWordWrap(True)
+        mapping_layout.addWidget(self.mapping_hint)
+        self.mapping_nodes = QListWidget()
+        self.mapping_nodes.setObjectName("mappingNodes")
+        self.mapping_nodes.itemDoubleClicked.connect(self._follow_mapping_node)
+        mapping_layout.addWidget(self.mapping_nodes, 1)
+        self.mapping_panel.hide()
+        layout.addWidget(self.mapping_panel, 1)
 
         self.selection_bar = QFrame()
         self.selection_bar.setObjectName("selectionBar")
@@ -342,6 +360,11 @@ class MainWindow(QMainWindow):
 
     def _change_reader_mode(self, mode):
         self.reader_mode = mode
+        if hasattr(self, "mapping_panel"):
+            self.reader.setVisible(mode != "Mapping")
+            self.mapping_panel.setVisible(mode == "Mapping")
+            if mode == "Mapping":
+                self._populate_mapping()
         if mode == "Reading":
             self.reader.highlight_verses([])
             self.notify("Reading mode: Scripture overlays are hidden")
@@ -350,6 +373,34 @@ class MainWindow(QMainWindow):
         else:
             self.notify("Mapping mode is ready for the selected passage")
         self._refresh_exploration_overlays()
+
+    def _populate_mapping(self):
+        self.mapping_nodes.clear()
+        if not self.selection:
+            self.mapping_hint.setText("No selected anchor. Select a verse or phrase in Bible, then return to Mapping.")
+            return
+        self.mapping_hint.setText("Double-click a node to Follow it. Previewing relationships does not move the Bible until you follow.")
+        try:
+            anchor_id = self.database.scripture_anchor(self.selection[0])
+            rows = self.database.knowledge_connections(anchor_id)
+        except DATA_ERRORS:
+            rows = []
+        for row in rows:
+            other = row["to_verse"] if row["from_id"] == anchor_id else row["from_verse"]
+            label = f"{other or row['to_title'] or row['from_title']} · {row['type']} · {row['status']}"
+            if row["evidence"]:
+                label += f" — {row['evidence']}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, other)
+            self.mapping_nodes.addItem(item)
+
+    def _follow_mapping_node(self, item):
+        value = item.data(Qt.ItemDataRole.UserRole)
+        if not value:
+            return
+        book, chapter, verse = value.split(":")
+        self._open_reference(ScriptureAnchor(book, int(chapter), int(verse), self.edition.currentData()))
+        self.mode_selector.setCurrentText("Reading")
 
     def _set_exploration_filter(self, name, checked):
         filters = self.session.ui_state.get("exploration_filters", {"connections": True, "traces": True, "studies": True})
