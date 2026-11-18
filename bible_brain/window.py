@@ -73,6 +73,8 @@ class MainWindow(QMainWindow):
         self.trace_index = 0
         self.trace_origin = None
         self.continuous_chapters = []
+        self.mapping_origin = None
+        self.mapping_history = []
         self.setWindowTitle("Bible Brain")
         self.setObjectName("mainWindow")
         self.setMinimumSize(640, 545)
@@ -306,8 +308,12 @@ class MainWindow(QMainWindow):
         mapping_layout.addWidget(self.mapping_hint)
         self.mapping_nodes = QListWidget()
         self.mapping_nodes.setObjectName("mappingNodes")
-        self.mapping_nodes.itemDoubleClicked.connect(self._follow_mapping_node)
+        self.mapping_nodes.currentItemChanged.connect(lambda item, _previous: self._preview_mapping_node(item))
         mapping_layout.addWidget(self.mapping_nodes, 1)
+        mapping_actions = QHBoxLayout()
+        mapping_actions.addWidget(button("Follow", "mappingFollow", self._follow_selected_mapping_node, "primary"))
+        mapping_actions.addWidget(button("Back", "mappingBackStep", self._back_mapping_node, "quiet"))
+        mapping_layout.addLayout(mapping_actions)
         self.mapping_panel.hide()
         layout.addWidget(self.mapping_panel, 1)
 
@@ -362,8 +368,18 @@ class MainWindow(QMainWindow):
         return scripture
 
     def _change_reader_mode(self, mode):
+        previous_mode = self.reader_mode
         self.reader_mode = mode
         if hasattr(self, "mapping_panel"):
+            if mode == "Mapping" and previous_mode != "Mapping":
+                self.mapping_origin = self.selection[0] if self.selection else None
+                self.mapping_history = []
+            elif previous_mode == "Mapping" and mode != "Mapping":
+                origin = self.mapping_origin
+                self.mapping_origin = None
+                self.mapping_history = []
+                if origin is not None:
+                    self._open_reference(origin)
             self.reader.setVisible(mode != "Mapping")
             self.mapping_panel.setVisible(mode == "Mapping")
             if mode == "Mapping":
@@ -397,13 +413,32 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, other)
             self.mapping_nodes.addItem(item)
 
+    def _preview_mapping_node(self, item):
+        if not item:
+            self.mapping_hint.setText("Select a node to preview its passage and evidence. Follow moves the Bible focus.")
+            return
+        value = item.data(Qt.ItemDataRole.UserRole)
+        self.mapping_hint.setText(f"Preview · {value}\nPress Follow to move the Bible focus, or Back to return through map history.")
+
+    def _follow_selected_mapping_node(self):
+        self._follow_mapping_node(self.mapping_nodes.currentItem())
+
     def _follow_mapping_node(self, item):
         value = item.data(Qt.ItemDataRole.UserRole)
         if not value:
             return
+        if self.selection:
+            self.mapping_history.append(self.selection[0])
         book, chapter, verse = value.split(":")
         self._open_reference(ScriptureAnchor(book, int(chapter), int(verse), self.edition.currentData()))
-        self.mode_selector.setCurrentText("Reading")
+        self._populate_mapping()
+
+    def _back_mapping_node(self):
+        if not self.mapping_history:
+            return
+        anchor = self.mapping_history.pop()
+        self._open_reference(anchor)
+        self._populate_mapping()
 
     def _set_exploration_filter(self, name, checked):
         filters = self.session.ui_state.get("exploration_filters", {"connections": True, "traces": True, "studies": True})
@@ -843,6 +878,8 @@ class MainWindow(QMainWindow):
         self.graph.set_selection(self.selection)
         self.investigate.set_selection(self.selection)
         self.discovery.set_selection(self.selection)
+        if self.reader_mode == "Mapping" and hasattr(self, "mapping_panel"):
+            self._populate_mapping()
         if anchors:
             label = self.format_anchor(anchors[0])
             if len(anchors) > 1:
