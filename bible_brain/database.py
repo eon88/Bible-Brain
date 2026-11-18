@@ -758,6 +758,15 @@ class Database:
             self._connection.execute("UPDATE studies SET summary=?, observations=?, questions=?, interpretations=?, conclusions=? WHERE object_id=?", (*fields, study_id))
             self._snapshot_note(study_id)
 
+    def add_study_anchors(self, study_id: str, anchors=()) -> None:
+        """Attach additional exact Scripture anchors without replacing study content."""
+        with _transaction(self._connection):
+            self.study(study_id)
+            existing = set(self._note_anchor_ids(study_id))
+            existing.update(self._anchor_id(anchor) for anchor in anchors)
+            self._replace_note_anchors(study_id, existing)
+            self._snapshot_note(study_id)
+
     def review_knowledge(self, item_id, status, reviewer, reason, *, relationship=False) -> None:
         """Record an explicit user decision and apply it atomically to the item."""
         if status not in REVIEW_STATUSES:

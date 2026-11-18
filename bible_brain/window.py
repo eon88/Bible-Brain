@@ -544,9 +544,24 @@ class MainWindow(QMainWindow):
         self.notify("Selection bookmarked")
 
     def _add_selection_to_study(self):
-        if self.selection:
+        if not self.selection:
+            return
+        studies = self.database.studies()
+        if not studies:
             self._open_companion_tab(2)
-            self.notify("Choose a study in Studies to attach this selection")
+            self.notify("Create a study first, then attach this selection")
+            return
+        labels = [row["title"] for row in studies]
+        title, ok = QInputDialog.getItem(self, "Add to existing study", "Study", labels, 0, False)
+        if not ok:
+            return
+        study_id = studies[labels.index(title)]["id"]
+        try:
+            self.database.add_study_anchors(study_id, self.selection)
+            self.graph.refresh()
+            self.notify("Selection attached to the study")
+        except DATA_ERRORS as error:
+            self.show_error("Could not attach the selection", error)
 
     def _create_selection_subject(self):
         if not self.selection:
