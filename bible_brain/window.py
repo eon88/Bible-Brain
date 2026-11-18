@@ -152,11 +152,11 @@ class MainWindow(QMainWindow):
         self.bible_button.clicked.connect(self._show_bible)
         layout.addWidget(self.bible_button)
 
-        self.research_button = QPushButton("Study")
+        self.research_button = QPushButton("Library")
         self.research_button.setProperty("nav", True)
         self.research_button.setObjectName("toggleResearch")
         self.research_button.setCheckable(True)
-        self.research_button.setToolTip("Show or hide research (Ctrl+Shift+R)")
+        self.research_button.setToolTip("Open saved notes, folders and research")
         self.research_button.toggled.connect(self._toggle_research)
         layout.addWidget(self.research_button)
         self.explore_button = QPushButton("Explore")
@@ -171,11 +171,11 @@ class MainWindow(QMainWindow):
         self.traces_button.setToolTip("Follow a saved trace through Scripture")
         self.traces_button.clicked.connect(self._show_traces)
         layout.addWidget(self.traces_button)
-        self.library_button = QPushButton("Library")
+        self.library_button = QPushButton("Study")
         self.library_button.setProperty("nav", True)
         self.library_button.setObjectName("navLibrary")
-        self.library_button.setToolTip("Open saved studies, notes and research")
-        self.library_button.clicked.connect(self._show_library)
+        self.library_button.setToolTip("Open the Study Companion")
+        self.library_button.clicked.connect(self._show_study)
         layout.addWidget(self.library_button)
         self.investigate_button = QPushButton("Discuss")
         self.investigate_button.setProperty("nav", True)
@@ -348,6 +348,13 @@ class MainWindow(QMainWindow):
         self.graph.set_selection(self.selection)
         if hasattr(self.graph, "tabs"):
             self.graph.tabs.setCurrentIndex(1)
+
+    def _show_study(self):
+        self._close_context_panels()
+        self.graph.setVisible(True)
+        self.graph.set_selection(self.selection)
+        if hasattr(self.graph, "tabs"):
+            self.graph.tabs.setCurrentIndex(2)
 
     def _show_library(self):
         self._close_context_panels()
@@ -886,6 +893,10 @@ def _stylesheet(c, serif, sans):
             selection-color: {c["accent_text"]};
         }}
         QTreeWidget, QListWidget {{ padding: 4px; outline: 0; }}
+        QTabWidget::pane {{ border: 1px solid {c["line"]}; border-radius: 7px; background: {c["surface"]}; }}
+        QTabBar::tab {{ background: transparent; color: {c["soft"]}; padding: 8px 13px; border-bottom: 2px solid transparent; }}
+        QTabBar::tab:selected {{ color: {c["accent"]}; border-bottom-color: {c["accent"]}; font-weight: 600; }}
+        QTabBar::tab:hover {{ background: {c["selected"]}; }}
         QTreeWidget::item, QListWidget::item {{ min-height: 27px; padding: 1px 4px; }}
         QTreeWidget::item:selected, QListWidget::item:selected {{
             background: {c["selected"]};

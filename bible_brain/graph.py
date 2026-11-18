@@ -13,8 +13,8 @@ class GraphWorkspace(QWidget):
     traceChanged = Signal(object)
     def __init__(self, session, notify, show_error):
         super().__init__(); self.setObjectName("explorePanel"); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None
-        layout=QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12); head=QHBoxLayout(); title=QLabel("Explore"); title.setProperty("role","panelTitle"); head.addWidget(title); self.search=QLineEdit(); self.search.setPlaceholderText("Search your research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.setToolTip("Close Explore"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
-        self.tabs=QTabWidget(); self.tabs.addTab(self._cross_panel(),"Cross-references"); self.tabs.addTab(self._trace_panel(),"Trace"); self.tabs.addTab(self._study_panel(),"Studies"); layout.addWidget(self.tabs)
+        layout=QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12); head=QHBoxLayout(); title=QLabel("Study Companion"); title.setProperty("role","panelTitle"); head.addWidget(title); self.search=QLineEdit(); self.search.setPlaceholderText("Search your research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.setToolTip("Close Study Companion"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
+        self.tabs=QTabWidget(); self.tabs.setObjectName("companionTabs"); self.tabs.addTab(self._cross_panel(),"Connections"); self.tabs.addTab(self._trace_panel(),"Traces"); self.tabs.addTab(self._study_panel(),"Studies"); layout.addWidget(self.tabs)
     @property
     def database(self): return self.session.database
     def set_selection(self, anchors): self.selection=list(anchors); self.refresh()
