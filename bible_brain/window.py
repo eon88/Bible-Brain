@@ -297,7 +297,18 @@ class MainWindow(QMainWindow):
         clear = button("Clear", "clearSelection", self._clear_selection, "quiet")
         selection_layout.addWidget(clear)
         selection_layout.addWidget(button("Explore", "exploreSelection", self._explore_selection, "quiet"))
-        selection_layout.addWidget(button("Add to trace", "traceSelection", self._trace_selection, "quiet"))
+        selection_layout.addWidget(button("Trace", "traceSelection", self._trace_selection, "quiet"))
+        save_button = QToolButton()
+        save_button.setObjectName("saveSelection")
+        save_button.setText("Save")
+        save_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        save_menu = QMenu(save_button)
+        save_menu.addAction("Bookmark", self._bookmark_selection)
+        save_menu.addAction("Add to existing study", self._add_selection_to_study)
+        save_menu.addAction("Create research subject", self._create_selection_subject)
+        save_button.setMenu(save_menu)
+        selection_layout.addWidget(save_button)
+        selection_layout.addWidget(button("Copy", "copySelection", self._copy_selection, "quiet"))
         selection_layout.addWidget(button("Original language", "originalLanguage", self._show_original_language, "quiet"))
         selection_layout.addWidget(button("New note", "newSelectionNote", self._note_from_selection, "primary"))
         layout.addWidget(self.selection_bar)
@@ -429,6 +440,48 @@ class MainWindow(QMainWindow):
     def _trace_selection(self):
         if self.selection:
             self._open_companion_tab(1)
+
+    def _copy_selection(self):
+        if not self.selection:
+            return
+        text = self.reader.textCursor().selectedText().replace("\u2029", " ").strip()
+        anchor = self.selection[0]
+        end = self.selection[-1]
+        reference = self.format_anchor(anchor)
+        if end.verse != anchor.verse:
+            reference += f"–{end.verse}"
+        edition = self.edition.currentText()
+        QApplication.clipboard().setText(f'“{text}” — {reference} ({edition})')
+        self.notify("Selection copied with its reference")
+
+    def _bookmark_selection(self):
+        if not self.selection:
+            return
+        anchor = self.selection[0]
+        bookmarks = self.session.ui_state.get("bookmarks", [])
+        entry = {"label": self.format_anchor(anchor), "book": anchor.book, "chapter": anchor.chapter, "verse": anchor.verse, "translation": anchor.translation, "start": anchor.start, "end": anchor.end}
+        bookmarks = [item for item in bookmarks if item.get("label") != entry["label"]]
+        bookmarks.insert(0, entry)
+        self.session.update_ui_state(bookmarks=bookmarks[:100])
+        self.notify("Selection bookmarked")
+
+    def _add_selection_to_study(self):
+        if self.selection:
+            self._open_companion_tab(2)
+            self.notify("Choose a study in Studies to attach this selection")
+
+    def _create_selection_subject(self):
+        if not self.selection:
+            return
+        title, ok = QInputDialog.getText(self, "Create research subject", "Name")
+        if not ok or not title.strip():
+            return
+        try:
+            self.database.create_note(title.strip(), "", anchors=self.selection)
+            self.workspace.refresh()
+            self.notify("Research subject saved")
+        except DATA_ERRORS as error:
+            self.show_error("Could not create the research subject", error)
 
     def _show_traces(self):
         self._open_companion_tab(1)
