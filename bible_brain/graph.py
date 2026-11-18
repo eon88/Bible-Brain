@@ -62,6 +62,8 @@ class GraphWorkspace(QWidget):
             other=row['to_verse'] if row['from_id']==anchor_id else row['from_verse']
             text=f"{other or row['to_title'] or row['from_title']} · {row['type']} · {row['status']}"
             if row['evidence']: text += f" — {row['evidence']}"
+            if row['source_uri'] or row['source_detail']:
+                text += f" · Source: {row['source_uri'] or row['source_detail']}"
             item=QListWidgetItem(text); item.setData(Qt.ItemDataRole.UserRole,row['id']); self.connections.addItem(item)
     def _parse_reference(self, value, translation=None):
         bits=value.strip().replace(':',' ').split()
