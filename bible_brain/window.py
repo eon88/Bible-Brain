@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from .reader import ChapterReader
+from .database import ScriptureAnchor
 from .session import APPEARANCES, TEXT_SIZES
 from .typography import load_fonts
 from .workspace import DATA_ERRORS, ResearchWorkspace, SelectBox, button, item_heading
@@ -236,6 +238,14 @@ class MainWindow(QMainWindow):
         self.chapter.setMinimumContentsLength(7)
         self.chapter.currentIndexChanged.connect(self._render_chapter)
         controls.addWidget(self.chapter)
+        self.reference_jump = QLineEdit()
+        self.reference_jump.setObjectName("referenceJump")
+        self.reference_jump.setPlaceholderText("Go to reference…")
+        self.reference_jump.setAccessibleName("Go to Bible reference")
+        self.reference_jump.setMaximumWidth(150)
+        self.reference_jump.returnPressed.connect(self._jump_reference)
+        controls.addWidget(self.reference_jump)
+        controls.addWidget(button("Go", "goToReference", self._jump_reference, "quiet"))
         controls.addStretch(1)
         self.edition = self._combo("translationSelector", "Translation")
         self.edition.setMinimumContentsLength(5)
@@ -267,6 +277,24 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.selection_bar)
         self.selection_bar.hide()
         return scripture
+
+    def _jump_reference(self):
+        value = self.reference_jump.text().strip().upper()
+        match = __import__("re").match(r"^([1-3]?\s*[A-Z][A-Z ]{1,14})\s+(\d+):(\d+)$", value)
+        if not match:
+            self.notify("Enter a reference such as REV 2:7")
+            return
+        raw_book = " ".join(match.group(1).split())
+        aliases = {"REVELATION": "REV", "GENESIS": "GEN", "MATTHEW": "MAT", "JOHN": "JHN", "PSALMS": "PSA"}
+        book = aliases.get(raw_book, raw_book.replace(" ", ""))
+        chapter, verse = int(match.group(2)), int(match.group(3))
+        translation = self.edition.currentData()
+        if not translation or self.database._connection.execute("SELECT 1 FROM canonical_verses WHERE id=?", (f"{book}:{chapter}:{verse}",)).fetchone() is None:
+            self.notify("That Scripture reference is not available in this library")
+            return
+        self._goto_chapter(translation, book, chapter)
+        self.reader.select_anchor(ScriptureAnchor(book, chapter, verse, translation))
+        self.reference_jump.clear()
 
     @staticmethod
     def _combo(name, label):
