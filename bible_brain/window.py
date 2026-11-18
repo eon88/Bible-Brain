@@ -143,7 +143,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(brand_box)
         layout.addStretch(1)
 
-        self.research_button = QPushButton("Research")
+        self.bible_button = QPushButton("Bible")
+        self.bible_button.setProperty("nav", True)
+        self.bible_button.setObjectName("navBible")
+        self.bible_button.setToolTip("Return to clean Scripture reading")
+        self.bible_button.clicked.connect(self._show_bible)
+        layout.addWidget(self.bible_button)
+
+        self.research_button = QPushButton("Study")
         self.research_button.setProperty("nav", True)
         self.research_button.setObjectName("toggleResearch")
         self.research_button.setCheckable(True)
@@ -156,6 +163,18 @@ class MainWindow(QMainWindow):
         self.explore_button.setCheckable(True)
         self.explore_button.toggled.connect(self._toggle_explore)
         layout.addWidget(self.explore_button)
+        self.traces_button = QPushButton("Traces")
+        self.traces_button.setProperty("nav", True)
+        self.traces_button.setObjectName("navTraces")
+        self.traces_button.setToolTip("Follow a saved trace through Scripture")
+        self.traces_button.clicked.connect(self._show_traces)
+        layout.addWidget(self.traces_button)
+        self.library_button = QPushButton("Library")
+        self.library_button.setProperty("nav", True)
+        self.library_button.setObjectName("navLibrary")
+        self.library_button.setToolTip("Open saved studies, notes and research")
+        self.library_button.clicked.connect(self._show_library)
+        layout.addWidget(self.library_button)
         self.investigate_button = QPushButton("Discuss")
         self.investigate_button.setProperty("nav", True)
         self.investigate_button.setObjectName("toggleInvestigate")
@@ -168,21 +187,21 @@ class MainWindow(QMainWindow):
         self.lenses_button.setObjectName("toggleLenses")
         self.lenses_button.setCheckable(True)
         self.lenses_button.toggled.connect(lambda checked: self.lenses.setVisible(checked))
-        layout.addWidget(self.lenses_button)
+        self.lenses_button.hide()
         self.conversation_button = QPushButton("Conversations")
         self.conversation_button.setProperty("nav", True)
         self.conversation_button.setObjectName("processConversation")
         self.conversation_button.setToolTip("Import and review study conversations")
         self.conversation_button.setCheckable(True)
         self.conversation_button.toggled.connect(lambda checked: self.conversation.setVisible(checked))
-        layout.addWidget(self.conversation_button)
+        self.conversation_button.hide()
         self.discovery_button = QPushButton("Discover")
         self.discovery_button.setProperty("nav", True)
         self.discovery_button.setObjectName("discoverConnections")
         self.discovery_button.setToolTip("Find possible connections without saving automatically")
         self.discovery_button.setCheckable(True)
         self.discovery_button.toggled.connect(lambda checked: self.discovery.setVisible(checked))
-        layout.addWidget(self.discovery_button)
+        self.discovery_button.hide()
         layout.addWidget(button("Settings", "openSettings", self._show_settings, "quiet"))
         return header
 
@@ -279,6 +298,36 @@ class MainWindow(QMainWindow):
             else:
                 height = self.splitter.height()
                 self.splitter.setSizes([height * 2 // 5, height * 3 // 5])
+
+    def _close_context_panels(self):
+        for panel, button_widget in ((self.workspace, self.research_button), (self.graph, self.explore_button), (self.investigate, self.investigate_button)):
+            panel.hide()
+            button_widget.blockSignals(True)
+            button_widget.setChecked(False)
+            button_widget.blockSignals(False)
+        self.reader.highlight_verses([])
+
+    def _show_bible(self):
+        self._close_context_panels()
+        self.reader.setFocus()
+
+    def _show_traces(self):
+        self._close_context_panels()
+        self.explore_button.blockSignals(True)
+        self.explore_button.setChecked(True)
+        self.explore_button.blockSignals(False)
+        self.graph.setVisible(True)
+        self.graph.set_selection(self.selection)
+        if hasattr(self.graph, "tabs"):
+            self.graph.tabs.setCurrentIndex(1)
+
+    def _show_library(self):
+        self._close_context_panels()
+        self.research_button.blockSignals(True)
+        self.research_button.setChecked(True)
+        self.research_button.blockSignals(False)
+        self.workspace.setVisible(True)
+        self._toggle_research(True)
 
     def _toggle_explore(self, enabled):
         self.graph.setVisible(enabled)
