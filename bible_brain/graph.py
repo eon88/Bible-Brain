@@ -75,10 +75,12 @@ class GraphWorkspace(QWidget):
         target=QLineEdit(); target.setPlaceholderText("REV 22:2"); form.addRow("Other passage",target)
         kind=QComboBox(); [kind.addItem(label,code) for code,label in CONNECTION_TYPES]; form.addRow("Classify as",kind)
         evidence=QPlainTextEdit(); evidence.setPlaceholderText("Explain the textual evidence or hypothesis…"); form.addRow("Evidence",evidence)
+        source_uri=QLineEdit(); source_uri.setPlaceholderText("Optional source URL or dataset identifier"); form.addRow("Source",source_uri)
+        source_detail=QPlainTextEdit(); source_detail.setPlaceholderText("Optional source note, edition or provenance detail…"); form.addRow("Source detail",source_detail)
         controls=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel); controls.accepted.connect(dialog.accept); controls.rejected.connect(dialog.reject); form.addRow(controls)
         if dialog.exec()!=QDialog.DialogCode.Accepted: return
         try:
-            source=self.database.scripture_anchor(self.selection[0]); dest=self.database.scripture_anchor(self._parse_reference(target.text(),self.selection[0].translation)); self.database.create_relationship(source,dest,kind.currentData(),evidence=evidence.toPlainText()); self.refresh(); self.notify("Connection saved")
+            source=self.database.scripture_anchor(self.selection[0]); dest=self.database.scripture_anchor(self._parse_reference(target.text(),self.selection[0].translation)); self.database.create_relationship(source,dest,kind.currentData(),evidence=evidence.toPlainText(),source_uri=source_uri.text().strip() or None,source_detail=source_detail.toPlainText().strip() or None); self.refresh(); self.notify("Connection saved")
         except DATA_ERRORS as error: self.show_error("Could not add the connection",error)
     def _selected_connection(self):
         item=self.connections.currentItem(); return item.data(Qt.ItemDataRole.UserRole) if item else None
