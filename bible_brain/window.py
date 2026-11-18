@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
         self.book_names = {}
         self._quote_key = None
         self._quote_verses = {}
+        self.reader_mode = "Reading"
         self.setWindowTitle("Bible Brain")
         self.setObjectName("mainWindow")
         self.setMinimumSize(640, 545)
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
         self.graph = GraphWorkspace(session, self.notify, self.show_error)
         self.graph.navigateRequested.connect(self._open_reference)
         self.graph.traceChanged.connect(self._set_trace)
+        self.graph.closeButton.clicked.connect(self._close_companion)
         self.splitter.addWidget(self.graph)
         self.graph.hide()
         self.investigate = InvestigatePanel(session, self.notify, self.show_error)
@@ -247,6 +249,11 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.reference_jump)
         controls.addWidget(button("Go", "goToReference", self._jump_reference, "quiet"))
         controls.addStretch(1)
+        self.mode_selector = self._combo("readerMode", "Reading mode")
+        self.mode_selector.addItems(["Reading", "Exploration", "Mapping"])
+        self.mode_selector.setCurrentText("Reading")
+        self.mode_selector.currentTextChanged.connect(self._change_reader_mode)
+        controls.addWidget(self.mode_selector)
         self.edition = self._combo("translationSelector", "Translation")
         self.edition.setMinimumContentsLength(5)
         self.edition.currentIndexChanged.connect(self._change_translation)
@@ -272,11 +279,23 @@ class MainWindow(QMainWindow):
         selection_layout.addWidget(self.selection_label, 1)
         clear = button("Clear", "clearSelection", self._clear_selection, "quiet")
         selection_layout.addWidget(clear)
+        selection_layout.addWidget(button("Explore", "exploreSelection", self._explore_selection, "quiet"))
+        selection_layout.addWidget(button("Add to trace", "traceSelection", self._trace_selection, "quiet"))
         selection_layout.addWidget(button("Original language", "originalLanguage", self._show_original_language, "quiet"))
         selection_layout.addWidget(button("New note", "newSelectionNote", self._note_from_selection, "primary"))
         layout.addWidget(self.selection_bar)
         self.selection_bar.hide()
         return scripture
+
+    def _change_reader_mode(self, mode):
+        self.reader_mode = mode
+        if mode == "Reading":
+            self.reader.highlight_verses([])
+            self.notify("Reading mode: Scripture overlays are hidden")
+        elif mode == "Exploration":
+            self.notify("Exploration mode: open Explore to inspect stored connections")
+        else:
+            self.notify("Mapping mode is ready for the selected passage")
 
     def _jump_reference(self):
         value = self.reference_jump.text().strip().upper()
@@ -335,26 +354,39 @@ class MainWindow(QMainWindow):
             button_widget.blockSignals(False)
         self.reader.highlight_verses([])
 
+    def _close_companion(self):
+        self.graph.hide()
+        self.explore_button.blockSignals(True)
+        self.explore_button.setChecked(False)
+        self.explore_button.blockSignals(False)
+        self.reader.setFocus()
+
     def _show_bible(self):
         self._close_context_panels()
         self.reader.setFocus()
 
-    def _show_traces(self):
+    def _open_companion_tab(self, index):
         self._close_context_panels()
         self.explore_button.blockSignals(True)
         self.explore_button.setChecked(True)
         self.explore_button.blockSignals(False)
         self.graph.setVisible(True)
         self.graph.set_selection(self.selection)
-        if hasattr(self.graph, "tabs"):
-            self.graph.tabs.setCurrentIndex(1)
+        self.graph.tabs.setCurrentIndex(index)
+
+    def _explore_selection(self):
+        if self.selection:
+            self._open_companion_tab(0)
+
+    def _trace_selection(self):
+        if self.selection:
+            self._open_companion_tab(1)
+
+    def _show_traces(self):
+        self._open_companion_tab(1)
 
     def _show_study(self):
-        self._close_context_panels()
-        self.graph.setVisible(True)
-        self.graph.set_selection(self.selection)
-        if hasattr(self.graph, "tabs"):
-            self.graph.tabs.setCurrentIndex(2)
+        self._open_companion_tab(2)
 
     def _show_library(self):
         self._close_context_panels()
