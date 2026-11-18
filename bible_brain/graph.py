@@ -174,8 +174,20 @@ class GraphWorkspace(QWidget):
         anchors=self.database.note_anchors(study_id)
         if anchors: sections.append("Connected Scripture\n"+"\n".join(f"{a['book']} {a['chapter']}:{a['verse']}" for a in anchors))
         text.setPlainText("\n\n".join(sections) or "This study is empty."); layout.addWidget(text,1)
+        if anchors:
+            linked=QListWidget(); linked.setObjectName("studyScriptureLinks")
+            for anchor in anchors:
+                link=QListWidgetItem(f"{anchor['book']} {anchor['chapter']}:{anchor['verse']}")
+                link.setData(Qt.ItemDataRole.UserRole, anchor)
+                linked.addItem(link)
+            linked.itemDoubleClicked.connect(self._open_study_anchor)
+            layout.addWidget(linked, 1)
         controls=QHBoxLayout(); controls.addWidget(button("Edit", "openStudyEdit", lambda: (dialog.accept(), self._select_study_for_edit(study_id))))
         controls.addStretch(1); controls.addWidget(button("Close", "closeStudy", dialog.accept)); layout.addLayout(controls); dialog.exec()
+
+    def _open_study_anchor(self, item):
+        anchor=item.data(Qt.ItemDataRole.UserRole)
+        self.navigateRequested.emit(ScriptureAnchor(anchor["book"], int(anchor["chapter"]), int(anchor["verse"]), anchor["translation"], anchor["start"], anchor["end"]))
 
     def _select_study_for_edit(self, study_id):
         for index in range(self.study_list.count()):
