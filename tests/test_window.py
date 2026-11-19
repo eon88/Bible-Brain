@@ -188,3 +188,34 @@ class WindowTests(unittest.TestCase):
         self.assertGreaterEqual(len(sizes), 2)
         self.assertGreater(sizes[0], 0)
         self.assertGreater(sizes[self.window.splitter.indexOf(self.window.graph)], 0)
+
+    def test_clean_launch_is_reading_first_with_companion_closed(self):
+        self.assertEqual(self.window.reader_mode, "Reading")
+        self.assertFalse(self.window.graph.isVisible())
+        self.assertFalse(self.window.workspace.isVisible())
+        self.assertFalse(self.window.investigate.isVisible())
+        self.assertIn("In the beginning, God created", self.window.reader.toPlainText())
+
+    def test_companion_sections_are_independent_and_persisted(self):
+        self.window._show_study()
+        self.app.processEvents()
+        connection = self.window.graph.findChild(QToolButton, "sectionToggle_connections_results")
+        trace = self.window.graph.findChild(QToolButton, "sectionToggle_traces_saved")
+        study = self.window.graph.findChild(QToolButton, "sectionToggle_studies_dossiers")
+        self.assertTrue(connection.isChecked() and trace.isChecked() and study.isChecked())
+        connection.setChecked(False)
+        trace.setChecked(False)
+        state = self.session.ui_state["companion_sections"]
+        pin = self.session.ui_state.get("companion_pin", {}).get("id", "none")
+        self.assertFalse(state[pin]["connections:results"])
+        self.assertFalse(state[pin]["traces:saved"])
+        self.assertTrue(state[pin].get("studies:dossiers", True))
+
+    def test_contextual_companion_actions_are_exposed(self):
+        self.window._show_study()
+        self.app.processEvents()
+        self.assertIsNotNone(self.window.graph.findChild(QPushButton, "askAboutPassage"))
+        self.assertIsNotNone(self.window.graph.findChild(QPushButton, "interpretThroughLens"))
+        self.window._show_traces()
+        self.app.processEvents()
+        self.assertIsNotNone(self.window.graph.findChild(QPushButton, "companionOriginalLanguage"))
