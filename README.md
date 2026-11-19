@@ -20,6 +20,14 @@ The packaged app includes Python, Qt and Scripture. It opens without an internet
 
 See [Scripture datasets](docs/SCRIPTURE.md) for the publisher’s licence, provenance and the UTF-8 `.json` / `.json.gz` import format. See [Third-party notices](docs/THIRD_PARTY.md) for the packaged runtime licences.
 
+### Reader-first interface
+
+Bible Brain opens in clean **Reading** mode. The reader flows through adjacent chapters in the same book, and the chapter selector follows the visible chapter as you scroll. Use `Alt+1`, `Alt+2` and `Alt+3` for Reading, Exploration and Mapping.
+
+Selecting text exposes deliberate actions only: **Explore**, **Trace**, **Save** and **Copy**. Explore pins the exact occurrence in the Study Companion. Trace opens the saved Trace picker. Save offers Bookmark, Add to existing study and Create research subject. Copy includes the exact displayed text, reference and translation.
+
+The Study Companion is closed until requested and contains Connections, Traces and Studies. On a narrow window it becomes a draggable bottom sheet. Exploration markers are independently filterable; Mapping supports preview, explicit Follow/Back history and return to the originating Bible anchor. Trace reading follows saved member order and restores the starting passage when closed.
+
 ## Original languages (Bundle 02)
 
 Settings can import licensed Hebrew (`he`), Greek (`el`) and biblical Aramaic (`arc`)
