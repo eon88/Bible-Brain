@@ -60,7 +60,8 @@ class GraphWorkspace(QWidget):
         except DATA_ERRORS: return
         for row in self.database.knowledge_connections(anchor_id):
             other=row['to_verse'] if row['from_id']==anchor_id else row['from_verse']
-            text=f"{other or row['to_title'] or row['from_title']} · {row['type']} · {row['status']}"
+            direction = "Outgoing" if row['from_id'] == anchor_id else "Incoming"
+            text=f"{direction} · {other or row['to_title'] or row['from_title']} · {row['type']} · {row['status']}"
             if row['evidence']: text += f" — {row['evidence']}"
             if row['source_uri'] or row['source_detail']:
                 text += f" · Source: {row['source_uri'] or row['source_detail']}"
