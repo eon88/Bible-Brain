@@ -206,7 +206,7 @@ class GraphWorkspace(QWidget):
     def _study_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Studies"),1); top.addWidget(button("New study","newStudy",self._create_study,"primary")); l.addLayout(top)
         self.study_list=QListWidget(); self.study_list.setObjectName("studyList"); self.study_list.itemDoubleClicked.connect(self._open_study); l.addWidget(self.study_list,1)
-        controls=QHBoxLayout(); controls.addWidget(button("Edit", "editStudy", self._edit_study)); controls.addWidget(button("Attach image", "attachStudyImage", self._attach_study_image)); controls.addWidget(button("History", "studyHistory", self._study_history)); l.addLayout(controls); return w
+        controls=QHBoxLayout(); controls.addWidget(button("Edit", "editStudy", self._edit_study)); controls.addWidget(button("Attach Scripture", "attachStudyScripture", self._attach_study_selection)); controls.addWidget(button("Attach Trace", "attachStudyTrace", self._attach_study_trace)); controls.addWidget(button("Attach image", "attachStudyImage", self._attach_study_image)); controls.addWidget(button("History", "studyHistory", self._study_history)); l.addLayout(controls); return w
     def _refresh_studies(self):
         if not hasattr(self,'study_list'): return
         self.study_list.clear()
@@ -292,6 +292,37 @@ class GraphWorkspace(QWidget):
         try:
             self.database.attach_file(study_id,path); self.notify("Attachment saved")
         except DATA_ERRORS as error: self.show_error("Could not attach the image",error)
+
+    def _attach_study_selection(self):
+        study_id=self._selected_study()
+        if not study_id:
+            self.notify("Choose a study first")
+            return
+        if not self.selection:
+            self.notify("Select Scripture in the reader first")
+            return
+        try:
+            self.database.add_study_anchors(study_id, self.selection)
+            self.notify("Scripture attached to study")
+        except DATA_ERRORS as error: self.show_error("Could not attach Scripture",error)
+
+    def _attach_study_trace(self):
+        study_id=self._selected_study()
+        if not study_id:
+            self.notify("Choose a study first")
+            return
+        traces=self.database.traces()
+        if not traces:
+            self.notify("Create a Trace first")
+            return
+        labels=[row["title"] for row in traces]
+        choice,ok=QInputDialog.getItem(self,"Attach Trace","Trace",labels,0,False)
+        if not ok: return
+        trace_id=traces[labels.index(choice)]["id"]
+        try:
+            self.database.create_relationship(study_id,trace_id,"study_related")
+            self.notify("Trace attached to study")
+        except DATA_ERRORS as error: self.show_error("Could not attach Trace",error)
 
     def _study_history(self):
         study_id=self._selected_study()
