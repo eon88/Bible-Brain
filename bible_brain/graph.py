@@ -11,6 +11,7 @@ CONNECTION_TYPES = [("repeated_expression", "Repeated word or expression"), ("di
 class GraphWorkspace(QWidget):
     navigateRequested = Signal(object)
     traceChanged = Signal(object)
+    contextActionRequested = Signal(str)
     def __init__(self, session, notify, show_error):
         super().__init__(); self.setObjectName("explorePanel"); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None; self.section_toggles={}
         layout=QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12); head=QHBoxLayout(); title=QLabel("Study Companion"); title.setProperty("role","panelTitle"); head.addWidget(title); self.pin_label=QLabel("No pinned investigation"); self.pin_label.setObjectName("companionPin"); head.addWidget(self.pin_label,1); self.history_button=button("History", "companionHistory", self._show_history, "quiet"); head.addWidget(self.history_button); self.search=QLineEdit(); self.search.setPlaceholderText("Search your research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.setToolTip("Close Study Companion"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
@@ -116,7 +117,7 @@ class GraphWorkspace(QWidget):
             self.notify("No matching research found"); return
         QMessageBox.information(self,"Research search","\n".join(f"{r['title']} · {r['kind']} · {r['status']}" for r in rows))
     def _cross_panel(self):
-        w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Connections"),1); top.addWidget(button("Add connection", "addConnection", self._add_connection,"primary")); l.addLayout(top)
+        w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Connections"),1); top.addWidget(button("Original language", "companionOriginalLanguage", lambda: self.contextActionRequested.emit("original_language"),"quiet")); top.addWidget(button("Add connection", "addConnection", self._add_connection,"primary")); l.addLayout(top)
         self.connections=QListWidget(); self.connections.setObjectName("graphConnections"); self.connections.itemDoubleClicked.connect(self._open_connection); l.addWidget(self._section("connections","results","Connection results",self.connections),1)
         controls=QHBoxLayout(); self.review=QComboBox(); self.review.addItems(["Keep","Investigate","Park","Reject"]); controls.addWidget(self.review); controls.addWidget(button("Apply review", "reviewConnection", self._review_connection)); controls.addWidget(button("Edit", "editConnection", self._edit_connection)); l.addLayout(controls); return w
     def _refresh_connections(self):
@@ -235,7 +236,7 @@ class GraphWorkspace(QWidget):
         ref=item.text().split(':')
         if len(ref)==3: self.navigateRequested.emit(ScriptureAnchor(ref[0],int(ref[1]),int(ref[2]),self.selection[0].translation if self.selection else None))
     def _study_panel(self):
-        w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Studies"),1); top.addWidget(button("New study","newStudy",self._create_study,"primary")); l.addLayout(top)
+        w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Studies"),1); top.addWidget(button("Ask about passage","askAboutPassage",lambda: self.contextActionRequested.emit("ask"),"quiet")); top.addWidget(button("Interpret through lens","interpretThroughLens",lambda: self.contextActionRequested.emit("lens"),"quiet")); top.addWidget(button("New study","newStudy",self._create_study,"primary")); l.addLayout(top)
         self.study_list=QListWidget(); self.study_list.setObjectName("studyList"); self.study_list.itemDoubleClicked.connect(self._open_study); l.addWidget(self._section("studies","dossiers","Study dossiers",self.study_list),1)
         controls=QHBoxLayout(); controls.addWidget(button("Edit", "editStudy", self._edit_study)); controls.addWidget(button("Attach Scripture", "attachStudyScripture", self._attach_study_selection)); controls.addWidget(button("Attach Trace", "attachStudyTrace", self._attach_study_trace)); controls.addWidget(button("Attach image", "attachStudyImage", self._attach_study_image)); controls.addWidget(button("History", "studyHistory", self._study_history)); l.addLayout(controls); return w
     def _refresh_studies(self):

@@ -102,6 +102,7 @@ class MainWindow(QMainWindow):
         self.graph = GraphWorkspace(session, self.notify, self.show_error)
         self.graph.navigateRequested.connect(self._open_reference)
         self.graph.traceChanged.connect(self._set_trace)
+        self.graph.contextActionRequested.connect(self._companion_action)
         self.graph.closeButton.clicked.connect(self._close_companion)
         self.splitter.addWidget(self.graph)
         self.graph.hide()
@@ -681,6 +682,20 @@ class MainWindow(QMainWindow):
         self.research_button.blockSignals(False)
         self.workspace.setVisible(True)
         self._toggle_research(True)
+
+    def _companion_action(self, action):
+        """Route contextual Companion actions to the existing local tools."""
+        if action == "original_language":
+            self._show_original_language()
+            return
+        if action in {"ask", "lens"}:
+            self.investigate.set_selection(self.selection)
+            self.investigate.mode = "interpret" if action == "lens" else "interpret"
+            self.investigate.setVisible(True)
+            self.investigate_button.blockSignals(True)
+            self.investigate_button.setChecked(True)
+            self.investigate_button.blockSignals(False)
+            self.investigate.question.setFocus()
 
     def _toggle_explore(self, enabled):
         self.graph.setVisible(enabled)
