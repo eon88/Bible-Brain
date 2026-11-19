@@ -162,6 +162,8 @@ class WindowTests(unittest.TestCase):
         self.assertTrue(self.window.findChild(QToolButton, "saveSelection").isVisible())
         self.window.graph.pin_selection(self.window.selection)
         self.assertEqual(self.session.ui_state["companion_pin"]["label"], "GEN 1:1")
+        self.assertTrue(self.session.ui_state["companion_pin"]["id"])
+        self.assertEqual(self.session.ui_state["companion_history"][0]["id"], self.session.ui_state["companion_pin"]["id"])
         self.window.mode_selector.setCurrentText("Exploration")
         self.assertEqual(self.window.reader_mode, "Exploration")
         self.window.filter_actions["connections"].setChecked(False)

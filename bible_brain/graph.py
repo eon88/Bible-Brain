@@ -59,8 +59,13 @@ class GraphWorkspace(QWidget):
         except DATA_ERRORS as error: self.show_error("Could not add the selection to the trace",error)
     def pin_selection(self, anchors):
         if not anchors: return
-        anchor=anchors[0]; pin={"book":anchor.book,"chapter":anchor.chapter,"verse":anchor.verse,"translation":anchor.translation,"label":f"{anchor.book} {anchor.chapter}:{anchor.verse}"}
-        state=self.session.ui_state; history=[item for item in state.get("companion_history",[]) if item.get("label") != pin["label"]]
+        anchor=anchors[0]
+        try:
+            subject_id=self.database.scripture_anchor(anchor)
+        except DATA_ERRORS:
+            subject_id=f"{anchor.book}:{anchor.chapter}:{anchor.verse}:{anchor.start}:{anchor.end}"
+        pin={"id":subject_id,"book":anchor.book,"chapter":anchor.chapter,"verse":anchor.verse,"start":anchor.start,"end":anchor.end,"translation":anchor.translation,"label":f"{anchor.book} {anchor.chapter}:{anchor.verse}"}
+        state=self.session.ui_state; history=[item for item in state.get("companion_history",[]) if item.get("id",item.get("label")) != subject_id]
         history.insert(0,pin); self.session.update_ui_state(companion_pin=pin, companion_history=history[:50])
         self.pin_label.setText(f"Pinned · {pin['label']}")
     def _show_history(self):
