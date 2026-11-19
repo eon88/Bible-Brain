@@ -190,6 +190,18 @@ class WindowTests(unittest.TestCase):
         self.assertGreater(sizes[0], 0)
         self.assertGreater(sizes[self.window.splitter.indexOf(self.window.graph)], 0)
 
+    def test_phone_portrait_keeps_reader_visible_above_companion_sheet(self):
+        self.window.resize(390, 844)
+        self.window._show_study()
+        self.app.processEvents()
+        self.assertEqual(self.window.splitter.orientation(), Qt.Orientation.Vertical)
+        sizes = self.window.splitter.sizes()
+        graph_index = self.window.splitter.indexOf(self.window.graph)
+        self.assertGreaterEqual(sizes[0], 260)
+        self.assertGreaterEqual(sizes[graph_index], 280)
+        self.assertTrue(self.window.reader.isVisible())
+        self.assertTrue(self.window.graph.isVisible())
+
     def test_clean_launch_is_reading_first_with_companion_closed(self):
         self.assertEqual(self.window.reader_mode, "Reading")
         self.assertFalse(self.window.graph.isVisible())
