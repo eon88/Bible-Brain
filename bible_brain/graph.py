@@ -234,6 +234,18 @@ class GraphWorkspace(QWidget):
             if row[key]: sections.append(f"{label}\n{row[key]}")
         anchors=self.database.note_anchors(study_id)
         if anchors: sections.append("Connected Scripture\n"+"\n".join(f"{a['book']} {a['chapter']}:{a['verse']}" for a in anchors))
+        related_traces=[]
+        for relation in self.database.relationships(study_id):
+            if relation["type"] != "study_related" or relation["from_id"] != study_id:
+                continue
+            try:
+                target=self.database.knowledge_object(relation["to_id"])
+            except DATA_ERRORS:
+                continue
+            if target["kind"] == "trace":
+                related_traces.append(target["title"])
+        if related_traces:
+            sections.append("Attached Traces\n"+"\n".join(sorted(set(related_traces), key=str.casefold)))
         text.setPlainText("\n\n".join(sections) or "This study is empty."); layout.addWidget(text,1)
         if anchors:
             linked=QListWidget(); linked.setObjectName("studyScriptureLinks")
