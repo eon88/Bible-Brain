@@ -127,16 +127,17 @@ class GraphWorkspace(QWidget):
     def _cross_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Connections"),1); top.addWidget(button("Original language", "companionOriginalLanguage", lambda: self.contextActionRequested.emit("original_language"),"quiet")); top.addWidget(button("Add connection", "addConnection", self._add_connection,"primary")); l.addLayout(top)
         self.connections=QListWidget(); self.connections.setObjectName("graphConnections"); self.connections.itemDoubleClicked.connect(self._open_connection); self.connections_section=self._section("connections","results","Connection results",self.connections); l.addWidget(self.connections_section,1)
-        self.connections_empty=self._empty_state("Nothing connected yet", "Select a passage and add a relationship to begin building your Scripture graph."); l.addWidget(self.connections_empty,1)
-        controls=QHBoxLayout(); self.review=QComboBox(); self.review.addItems(["Keep","Investigate","Park","Reject"]); controls.addWidget(self.review); controls.addWidget(button("Apply review", "reviewConnection", self._review_connection)); controls.addWidget(button("Edit", "editConnection", self._edit_connection)); l.addLayout(controls); return w
+        self.connections_empty=self._empty_state("Every passage has more to explore", "Ask a question. Follow a connection. Build understanding at your own pace."); l.addWidget(self.connections_empty,1)
+        prompt=QHBoxLayout(); self.companion_question=QLineEdit(); self.companion_question.setObjectName("companionQuestion"); self.companion_question.setPlaceholderText("What would you like to understand?"); self.companion_question.returnPressed.connect(lambda: self.contextActionRequested.emit("ask")); prompt.addWidget(self.companion_question,1); prompt.addWidget(button("↑", "askCompanion", lambda: self.contextActionRequested.emit("ask"), "primary")); l.addLayout(prompt)
+        controls=QHBoxLayout(); self.review=QComboBox(); self.review.addItems(["Keep","Investigate","Park","Reject"]); controls.addWidget(self.review); controls.addWidget(button("Apply review", "reviewConnection", self._review_connection)); controls.addWidget(button("Edit", "editConnection", self._edit_connection)); self.connection_controls=controls; l.addLayout(controls); return w
     def _refresh_connections(self):
         if not hasattr(self,'connections'): return
         self.connections.clear()
         if not self.selection:
-            self.connections_section.setVisible(False); self.connections_empty.setVisible(True); return
+            self.connections_section.setVisible(False); self.connections_empty.setVisible(True); self._set_connection_controls(False); return
         try: anchor_id=self.database.scripture_anchor(self.selection[0])
         except DATA_ERRORS:
-            self.connections_section.setVisible(False); self.connections_empty.setVisible(True); return
+            self.connections_section.setVisible(False); self.connections_empty.setVisible(True); self._set_connection_controls(False); return
         for row in self.database.knowledge_connections(anchor_id):
             other=row['to_verse'] if row['from_id']==anchor_id else row['from_verse']
             direction = "Outgoing" if row['from_id'] == anchor_id else "Incoming"
@@ -145,7 +146,13 @@ class GraphWorkspace(QWidget):
             if row['source_uri'] or row['source_detail']:
                 text += f" · Source: {row['source_uri'] or row['source_detail']}"
             item=QListWidgetItem(text); item.setData(Qt.ItemDataRole.UserRole,row['id']); self.connections.addItem(item)
-        has_rows=self.connections.count()>0; self.connections_section.setVisible(has_rows); self.connections_empty.setVisible(not has_rows)
+        has_rows=self.connections.count()>0; self.connections_section.setVisible(has_rows); self.connections_empty.setVisible(not has_rows); self._set_connection_controls(has_rows)
+
+    def _set_connection_controls(self, visible):
+        if hasattr(self, "connection_controls"):
+            for index in range(self.connection_controls.count()):
+                widget=self.connection_controls.itemAt(index).widget()
+                if widget: widget.setVisible(visible)
     def _parse_reference(self, value, translation=None):
         bits=value.strip().replace(':',' ').split()
         if len(bits)!=3: raise ValueError("Use a reference like REV 22:2.")

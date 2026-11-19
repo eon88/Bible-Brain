@@ -55,10 +55,10 @@ LIGHT = {
     "selected": "#EAF0E3", "disabled": "#A0A69B",
 }
 DARK = {
-    "paper": "#1E2720", "surface": "#222E25", "chrome": "#18221C",
-    "line": "#344134", "ink": "#E0E8D9", "soft": "#A2AD9C",
-    "accent": "#A4BF92", "hover": "#D5E8C6", "accent_text": "#1E2720",
-    "selected": "#2B3E2D", "disabled": "#75826F",
+    "paper": "#19211B", "surface": "#202A22", "chrome": "#242C25",
+    "line": "#39453A", "ink": "#E8E7D8", "soft": "#AAB2A2",
+    "accent": "#B8CC9D", "hover": "#DCE6C4", "accent_text": "#1D261F",
+    "selected": "#304033", "disabled": "#778477",
 }
 
 
@@ -109,7 +109,9 @@ class MainWindow(QMainWindow):
         self.graph.contextActionRequested.connect(self._companion_action)
         self.graph.closeButton.clicked.connect(self._close_companion)
         self.splitter.addWidget(self.graph)
-        self.graph.hide()
+        # Dark workspace sessions open in the premium split composition; the
+        # neutral first-run/system session remains a clean reader until Explore.
+        self.graph.setVisible(self.session.appearance == "Dark" or bool(self.session.ui_state.get("companion_open")))
         self.investigate = InvestigatePanel(session, self.notify, self.show_error)
         self.investigate.navigateRequested.connect(self._open_reference)
         self.splitter.addWidget(self.investigate)
@@ -136,6 +138,8 @@ class MainWindow(QMainWindow):
         self._apply_theme()
         QApplication.styleHints().colorSchemeChanged.connect(self._on_system_theme)
         self.reload_database()
+        if self.graph.isVisible():
+            self._size_companion()
         self.reader.setFocus()
 
     @property
@@ -145,7 +149,7 @@ class MainWindow(QMainWindow):
     def _make_header(self):
         header = QFrame()
         header.setObjectName("appHeader")
-        header.setFixedHeight(76)
+        header.setFixedHeight(112)
         layout = QHBoxLayout(header)
         layout.setContentsMargins(25, 0, 24, 0)
         layout.setSpacing(9)
@@ -163,47 +167,45 @@ class MainWindow(QMainWindow):
         layout.addWidget(brand_box)
         layout.addStretch(1)
 
-        self.bible_button = QPushButton("Bible")
+        self.bible_button = QPushButton("▤  Bible")
         self.bible_button.setProperty("nav", True)
         self.bible_button.setObjectName("navBible")
         self.bible_button.setToolTip("Return to clean Scripture reading")
         self.bible_button.clicked.connect(self._show_bible)
         layout.addWidget(self.bible_button)
 
-        self.research_button = QPushButton("Library")
+        self.research_button = QPushButton("▧  Notebook")
         self.research_button.setProperty("nav", True)
         self.research_button.setObjectName("toggleResearch")
         self.research_button.setCheckable(True)
         self.research_button.setToolTip("Open saved notes, folders and research")
         self.research_button.toggled.connect(self._toggle_research)
         layout.addWidget(self.research_button)
-        self.explore_button = QPushButton("Explore")
+        self.explore_button = QPushButton("◉  Explore")
         self.explore_button.setProperty("nav", True)
         self.explore_button.setObjectName("toggleExplore")
         self.explore_button.setCheckable(True)
         self.explore_button.toggled.connect(self._toggle_explore)
         layout.addWidget(self.explore_button)
-        self.traces_button = QPushButton("Traces")
+        self.traces_button = QPushButton("✦  Traces")
         self.traces_button.setProperty("nav", True)
         self.traces_button.setObjectName("navTraces")
         self.traces_button.setToolTip("Follow a saved trace through Scripture")
         self.traces_button.clicked.connect(self._show_traces)
         layout.addWidget(self.traces_button)
-        self.library_button = QPushButton("Study")
+        self.library_button = QPushButton("▥  Studies")
         self.library_button.setProperty("nav", True)
         self.library_button.setObjectName("navLibrary")
         self.library_button.setToolTip("Open the Study Companion")
         self.library_button.clicked.connect(self._show_study)
         layout.addWidget(self.library_button)
-        self.investigate_button = QPushButton("Discuss")
+        self.investigate_button = QPushButton("◯  Discuss")
         self.investigate_button.setProperty("nav", True)
         self.investigate_button.setObjectName("toggleInvestigate")
         self.investigate_button.setToolTip("Ask questions and test interpretations")
         self.investigate_button.setCheckable(True)
         self.investigate_button.toggled.connect(self._toggle_investigate)
-        # Discuss remains available through the Studies Companion actions, not as
-        # a competing top-level destination.
-        self.investigate_button.hide()
+        self.investigate_button.show()
         self.lenses_button = QPushButton("Lenses")
         self.lenses_button.setProperty("nav", True)
         self.lenses_button.setObjectName("toggleLenses")
@@ -224,11 +226,11 @@ class MainWindow(QMainWindow):
         self.discovery_button.setCheckable(True)
         self.discovery_button.toggled.connect(lambda checked: self.discovery.setVisible(checked))
         self.discovery_button.hide()
-        local = QLabel("●  Local / Private")
+        local = QLabel("●  Local storage · private")
         local.setObjectName("localStatus")
         local.setToolTip("All Bible Brain data stays on this computer")
         layout.addWidget(local)
-        settings = button("Settings", "openSettings", self._show_settings, "quiet")
+        settings = button("☼  Settings", "openSettings", self._show_settings, "quiet")
         settings.setToolTip("Application settings")
         layout.addWidget(settings)
         return header
@@ -594,6 +596,7 @@ class MainWindow(QMainWindow):
 
     def _close_companion(self):
         self.graph.hide()
+        self.session.update_ui_state(companion_open=False)
         self.explore_button.blockSignals(True)
         self.explore_button.setChecked(False)
         self.explore_button.blockSignals(False)
@@ -609,6 +612,7 @@ class MainWindow(QMainWindow):
         self.explore_button.setChecked(True)
         self.explore_button.blockSignals(False)
         self.graph.setVisible(True)
+        self.session.update_ui_state(companion_open=True)
         self.graph.set_selection(self.selection)
         self.graph.tabs.setCurrentIndex(index)
         self._size_companion()
@@ -1334,7 +1338,7 @@ def _stylesheet(c, serif, sans):
         }}
         QLabel#wordmark {{
             font-family: "{serif}";
-            font-size: 22pt;
+            font-size: 28pt;
             color: {c["hover"]};
         }}
         QLabel#tagline {{
@@ -1350,9 +1354,9 @@ def _stylesheet(c, serif, sans):
             border-bottom: 2px solid transparent;
             border-radius: 0;
             color: {c["soft"]};
-            font-size: 9pt;
-            font-weight: 600;
-            padding: 10px 11px 8px;
+            font-size: 10pt;
+            font-weight: 500;
+            padding: 16px 12px 13px;
         }}
         QPushButton[nav="true"]:hover {{
             color: {c["ink"]};
@@ -1427,10 +1431,13 @@ def _stylesheet(c, serif, sans):
         QMenu::item:disabled {{ color: {c["disabled"]}; }}
         QFrame#traceNavigator {{ background: {c["surface"]}; border: 1px solid {c["line"]}; }}
         QFrame#mappingWorkspace {{ background: {c["paper"]}; }}
+        QWidget#explorePanel {{ background: {c["surface"]}; border-left: 1px solid {c["line"]}; }}
+        QWidget#companionEmptyState {{ background: {c["surface"]}; }}
         QLabel#companionPin {{ color: {c["soft"]}; font-size: 9pt; }}
         QWidget#companionEmptyState {{ background: transparent; }}
         QLabel#emptyStateTitle {{ color: {c["hover"]}; font-family: Georgia, serif; font-size: 18pt; font-weight: 600; }}
         QLabel#emptyStateDetail {{ color: {c["soft"]}; font-size: 10pt; padding: 0 24px; }}
+        QLineEdit#companionQuestion {{ background: {c["surface"]}; border: 1px solid {c["line"]}; border-radius: 10px; padding: 12px 14px; color: {c["ink"]}; }}
         QToolButton[objectName^="sectionToggle_"] {{ color: {c["hover"]}; font-weight: 600; text-align: left; padding: 6px 2px; }}
         QToolButton[role="sectionToggle"] {{ color: {c["hover"]}; font-weight: 600; text-align: left; }}
     """
