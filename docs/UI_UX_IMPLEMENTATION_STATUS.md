@@ -40,6 +40,7 @@ Artifacts:
 
 - `dist\Bible Brain\Bible Brain.exe`
 - `dist\Bible-Brain-Setup-0.2.0-x64-user.msi`
+- The current user's desktop shortcut is verified to target `%LOCALAPPDATA%\Programs\Bible Brain\Bible Brain.exe` directly.
 
 ## Still required before formal release acceptance
 
