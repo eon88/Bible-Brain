@@ -216,6 +216,45 @@ class ChapterReader(QTextBrowser):
                 selections.append(selection)
         self.setExtraSelections(selections)
 
+    def highlight_anchors(self, anchors, color=None):
+        """Highlight only the stored anchor range, preserving verse-level anchors."""
+        selections = []
+        for anchor in anchors:
+            book = anchor.book if hasattr(anchor, "book") else anchor["book"]
+            chapter = anchor.chapter if hasattr(anchor, "chapter") else int(anchor["chapter"])
+            verse = anchor.verse if hasattr(anchor, "verse") else int(anchor["verse"])
+            start = anchor.start if hasattr(anchor, "start") else anchor["start"]
+            end = anchor.end if hasattr(anchor, "end") else anchor["end"]
+            span = next((item for item in self.spans if item.book == book and item.chapter == chapter and item.number == verse), None)
+            if span is None:
+                continue
+            cursor = QTextCursor(self.document())
+            if start is None or end is None:
+                cursor.setPosition(span.text_start)
+                cursor.setPosition(span.text_end, QTextCursor.MoveMode.KeepAnchor)
+            else:
+                cursor.setPosition(span.cursor_index(int(start)))
+                cursor.setPosition(span.cursor_index(int(end)), QTextCursor.MoveMode.KeepAnchor)
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = cursor
+            selection.format.setBackground(QColor(color or self.verse_highlight))
+            selections.append(selection)
+        self.setExtraSelections(selections)
+
+    def scroll_to_verse(self, verse, book=None, chapter=None):
+        """Restore a readable anchor without changing the temporary selection."""
+        span = next((item for item in self.spans if item.number == verse and
+                     (book is None or item.book == book) and
+                     (chapter is None or item.chapter == chapter)), None)
+        if span is None:
+            return False
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(span.block_start)
+        rect = self.cursorRect(cursor)
+        target = self.verticalScrollBar().value() + rect.top() - 32
+        self.verticalScrollBar().setValue(max(0, target))
+        return True
+
     def select_anchor(self, anchor):
         span = next((span for span in self.spans if span.number == anchor.verse and span.book == anchor.book and span.chapter == anchor.chapter), None)
         if span is None:

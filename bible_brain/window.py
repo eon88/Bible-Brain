@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QKeySequence, QPalette, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QPalette, QShortcut, QBrush, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -29,6 +29,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QToolButton,
+    QGraphicsView,
+    QGraphicsScene,
+    QGraphicsEllipseItem,
+    QGraphicsTextItem,
 )
 
 from .reader import ChapterReader
@@ -45,16 +49,16 @@ from .discovery import DiscoveryPanel
 
 LOGGER = logging.getLogger(__name__)
 LIGHT = {
-    "paper": "#faf8f2", "surface": "#fffdf8", "chrome": "#f3efe5",
-    "line": "#ded6c6", "ink": "#2e2a23", "soft": "#695e50",
-    "accent": "#8a402c", "hover": "#713221", "accent_text": "#ffffff",
-    "selected": "#efe4d5", "disabled": "#a3988b",
+    "paper": "#FDFCF8", "surface": "#FFFFFF", "chrome": "#F7F8F3",
+    "line": "#E4E8DE", "ink": "#293A30", "soft": "#7C8379",
+    "accent": "#3F654F", "hover": "#284D3A", "accent_text": "#FFFFFF",
+    "selected": "#EAF0E3", "disabled": "#A0A69B",
 }
 DARK = {
-    "paper": "#20211f", "surface": "#282924", "chrome": "#252621",
-    "line": "#45453d", "ink": "#f2ebdf", "soft": "#c0b4a1",
-    "accent": "#e8ad92", "hover": "#f9c2a8", "accent_text": "#322016",
-    "selected": "#433831", "disabled": "#8d8378",
+    "paper": "#1E2720", "surface": "#222E25", "chrome": "#18221C",
+    "line": "#344134", "ink": "#E0E8D9", "soft": "#A2AD9C",
+    "accent": "#A4BF92", "hover": "#D5E8C6", "accent_text": "#1E2720",
+    "selected": "#2B3E2D", "disabled": "#75826F",
 }
 
 
@@ -141,7 +145,7 @@ class MainWindow(QMainWindow):
     def _make_header(self):
         header = QFrame()
         header.setObjectName("appHeader")
-        header.setFixedHeight(65)
+        header.setFixedHeight(76)
         layout = QHBoxLayout(header)
         layout.setContentsMargins(25, 0, 24, 0)
         layout.setSpacing(9)
@@ -197,7 +201,9 @@ class MainWindow(QMainWindow):
         self.investigate_button.setToolTip("Ask questions and test interpretations")
         self.investigate_button.setCheckable(True)
         self.investigate_button.toggled.connect(self._toggle_investigate)
-        layout.addWidget(self.investigate_button)
+        # Discuss remains available through the Studies Companion actions, not as
+        # a competing top-level destination.
+        self.investigate_button.hide()
         self.lenses_button = QPushButton("Lenses")
         self.lenses_button.setProperty("nav", True)
         self.lenses_button.setObjectName("toggleLenses")
@@ -218,7 +224,13 @@ class MainWindow(QMainWindow):
         self.discovery_button.setCheckable(True)
         self.discovery_button.toggled.connect(lambda checked: self.discovery.setVisible(checked))
         self.discovery_button.hide()
-        layout.addWidget(button("Settings", "openSettings", self._show_settings, "quiet"))
+        local = QLabel("●  Local / Private")
+        local.setObjectName("localStatus")
+        local.setToolTip("All Bible Brain data stays on this computer")
+        layout.addWidget(local)
+        settings = button("Settings", "openSettings", self._show_settings, "quiet")
+        settings.setToolTip("Application settings")
+        layout.addWidget(settings)
         return header
 
     def _make_scripture(self):
@@ -288,6 +300,7 @@ class MainWindow(QMainWindow):
         self.import_button = button(
             "Import translation…", "importEmptyTranslation", self._import_translation, "primary"
         )
+        self.import_button.hide()
         controls.addWidget(self.import_button)
         layout.addWidget(toolbar)
 
@@ -307,10 +320,18 @@ class MainWindow(QMainWindow):
         self.mapping_hint = QLabel("Select a passage, then enter Mapping to inspect stored relationships.")
         self.mapping_hint.setWordWrap(True)
         mapping_layout.addWidget(self.mapping_hint)
+        self.mapping_scene = QGraphicsScene(self)
+        self.mapping_view = QGraphicsView(self.mapping_scene)
+        self.mapping_view.setObjectName("mappingView")
+        self.mapping_view.setRenderHints(self.mapping_view.renderHints())
+        self.mapping_view.setMinimumHeight(220)
+        self.mapping_view.setStyleSheet("QGraphicsView { border: 0; background: transparent; }")
+        mapping_layout.addWidget(self.mapping_view, 1)
+        # Retain the semantic list as an accessibility/test fallback; the visible map is QGraphicsView.
         self.mapping_nodes = QListWidget()
         self.mapping_nodes.setObjectName("mappingNodes")
-        self.mapping_nodes.currentItemChanged.connect(lambda item, _previous: self._preview_mapping_node(item))
-        mapping_layout.addWidget(self.mapping_nodes, 1)
+        self.mapping_nodes.hide()
+        mapping_layout.addWidget(self.mapping_nodes)
         mapping_actions = QHBoxLayout()
         mapping_actions.addWidget(button("Follow", "mappingFollow", self._follow_selected_mapping_node, "primary"))
         mapping_actions.addWidget(button("Back", "mappingBackStep", self._back_mapping_node, "quiet"))
@@ -395,6 +416,7 @@ class MainWindow(QMainWindow):
         self._refresh_exploration_overlays()
 
     def _populate_mapping(self):
+        self.mapping_scene.clear()
         self.mapping_nodes.clear()
         if not self.selection:
             self.mapping_hint.setText("No selected anchor. Select a verse or phrase in Bible, then return to Mapping.")
@@ -405,14 +427,30 @@ class MainWindow(QMainWindow):
             rows = self.database.knowledge_connections(anchor_id)
         except DATA_ERRORS:
             rows = []
-        for row in rows:
+        origin = self.selection[0]
+        center = self.mapping_scene.addEllipse(260, 100, 18, 18, QPen(QColor("#3F654F"), 2), QBrush(QColor("#A9C39D")))
+        center.setData(0, f"{origin.book}:{origin.chapter}:{origin.verse}")
+        label = self.mapping_scene.addText(f"{origin.book} {origin.chapter}:{origin.verse}")
+        label.setDefaultTextColor(QColor("#293A30")); label.setPos(285, 94); label.setData(0, f"{origin.book}:{origin.chapter}:{origin.verse}")
+        for index, row in enumerate(rows):
             other = row["to_verse"] if row["from_id"] == anchor_id else row["from_verse"]
             label = f"{other or row['to_title'] or row['from_title']} · {row['type']} · {row['status']}"
             if row["evidence"]:
                 label += f" — {row['evidence']}"
-            item = QListWidgetItem(label)
-            item.setData(Qt.ItemDataRole.UserRole, other)
-            self.mapping_nodes.addItem(item)
+            if not other:
+                continue
+            list_item = QListWidgetItem(label); list_item.setData(Qt.ItemDataRole.UserRole, other); self.mapping_nodes.addItem(list_item)
+            angle_y = 32 + index * 48
+            node = self.mapping_scene.addEllipse(56, angle_y, 14, 14, QPen(QColor("#3F654F")), QBrush(QColor("#DDE9D5")))
+            node.setFlag(QGraphicsEllipseItem.GraphicsItemFlag.ItemIsSelectable, True); node.setData(0, other); node.setToolTip(label)
+            text = self.mapping_scene.addText(label); text.setDefaultTextColor(QColor("#293A30")); text.setPos(80, angle_y - 5); text.setData(0, other); text.setFlag(QGraphicsTextItem.GraphicsItemFlag.ItemIsSelectable, True); text.setToolTip(label)
+            self.mapping_scene.addLine(70, angle_y + 7, 260, 109, QPen(QColor("#AFC2AE"), 1))
+        self.mapping_scene.setSceneRect(0, 0, max(620, 420), max(180, 70 + len(rows) * 48))
+        self.mapping_scene.selectionChanged.connect(self._preview_mapping_graph_selection)
+
+    def _preview_mapping_graph_selection(self):
+        items = self.mapping_scene.selectedItems()
+        self._preview_mapping_value(items[0].data(0) if items else None)
 
     def _preview_mapping_node(self, item):
         if not item:
@@ -421,11 +459,22 @@ class MainWindow(QMainWindow):
         value = item.data(Qt.ItemDataRole.UserRole)
         self.mapping_hint.setText(f"Preview · {value}\nPress Follow to move the Bible focus, or Back to return through map history.")
 
+    def _preview_mapping_value(self, value):
+        if not value:
+            self.mapping_hint.setText("Select a node to preview its passage and evidence. Follow moves the Bible focus.")
+            return
+        self.mapping_hint.setText(f"Preview · {value}\nPress Follow to move the Bible focus, or Back to return through map history.")
+
     def _follow_selected_mapping_node(self):
-        self._follow_mapping_node(self.mapping_nodes.currentItem())
+        items = self.mapping_scene.selectedItems()
+        value = items[0].data(0) if items else (self.mapping_nodes.currentItem().data(Qt.ItemDataRole.UserRole) if self.mapping_nodes.currentItem() else None)
+        self._follow_mapping_value(value)
 
     def _follow_mapping_node(self, item):
-        value = item.data(Qt.ItemDataRole.UserRole)
+        value = item.data(Qt.ItemDataRole.UserRole) if item else None
+        self._follow_mapping_value(value)
+
+    def _follow_mapping_value(self, value):
         if not value:
             return
         if self.selection:
@@ -731,13 +780,11 @@ class MainWindow(QMainWindow):
                     self.trace_index = index
                     break
         self._refresh_trace_navigator()
-        verses = []
-        for row in self.database.trace_members(trace_id):
-            if row["verse_id"]:
-                book, chapter, verse = row["verse_id"].split(":")
-                if book == self.reader.book and int(chapter) == self.reader.chapter:
-                    verses.append(int(verse))
-        self.reader.highlight_verses(verses, trace_color)
+        anchors = []
+        for row in self.database.trace_member_anchors(trace_id):
+            if row["book"] == self.reader.book and int(row["chapter"]) == self.reader.chapter:
+                anchors.append(ScriptureAnchor(row["book"], int(row["chapter"]), int(row["verse"]), row["translation"], row["start"], row["end"]))
+        self.reader.highlight_anchors(anchors, trace_color)
 
     def _refresh_trace_navigator(self):
         if not self.trace_session_id or not self.trace_members:
@@ -828,6 +875,8 @@ class MainWindow(QMainWindow):
         if saved.get("scroll_ratio") is not None:
             ratio = max(0.0, min(1.0, float(saved["scroll_ratio"])))
             self.reader.verticalScrollBar().setValue(round(ratio * self.reader.verticalScrollBar().maximum()))
+        if saved.get("verse") is not None:
+            self.reader.scroll_to_verse(saved.get("verse"), saved.get("anchor_book"), saved.get("anchor_chapter"))
 
     def _location(self):
         return self.edition.currentData(), self.book.currentData(), self.chapter.currentData()
@@ -1216,13 +1265,20 @@ class MainWindow(QMainWindow):
                 self.show_error("Could not restore the database", error)
 
     def closeEvent(self, event):
+        if not self.workspace.can_leave():
+            event.ignore()
+            return
         translation, book, chapter = self._location()
         scrollbar = self.reader.verticalScrollBar()
         ratio = scrollbar.value() / max(1, scrollbar.maximum())
-        self.session.update_ui_state(reader_location={
-            "translation": translation, "book": book, "chapter": chapter, "scroll_ratio": ratio,
-        })
-        super().closeEvent(event)
+        cursor = self.reader.cursorForPosition(self.reader.viewport().rect().topLeft())
+        position = cursor.position()
+        visible = next((span for span in reversed(self.reader.spans) if span.block_start <= position), None)
+        location = {"translation": translation, "book": book, "chapter": chapter, "scroll_ratio": ratio}
+        if visible:
+            location.update({"verse": visible.number, "anchor_book": visible.book, "anchor_chapter": visible.chapter})
+        self.session.update_ui_state(reader_location=location)
+        event.accept()
 
     def notify(self, message):
         self.statusBar().showMessage(message, 4200)
@@ -1259,13 +1315,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(finish)
         dialog.exec()
 
-    def closeEvent(self, event):
-        if self.workspace.can_leave():
-            event.accept()
-        else:
-            event.ignore()
-
-
 def _stylesheet(c, serif, sans):
     return f"""
         QWidget {{
@@ -1286,13 +1335,15 @@ def _stylesheet(c, serif, sans):
         QLabel#wordmark {{
             font-family: "{serif}";
             font-size: 22pt;
-            color: {c["ink"]};
+            color: {c["hover"]};
         }}
         QLabel#tagline {{
             color: {c["soft"]};
             font-size: 8pt;
-            letter-spacing: 1px;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
         }}
+        QLabel#localStatus {{ color: {c["soft"]}; font-size: 8pt; padding-right: 8px; }}
         QPushButton[nav="true"] {{
             background: transparent;
             border: 0;
@@ -1301,17 +1352,19 @@ def _stylesheet(c, serif, sans):
             color: {c["soft"]};
             font-size: 9pt;
             font-weight: 600;
-            padding: 10px 9px 8px;
+            padding: 10px 11px 8px;
         }}
         QPushButton[nav="true"]:hover {{
             color: {c["ink"]};
             background: {c["selected"]};
         }}
         QPushButton[nav="true"]:checked {{
-            color: {c["accent"]};
+            color: {c["hover"]};
             border-bottom-color: {c["accent"]};
             background: transparent;
         }}
+        QToolButton#explorationFilters {{ background: {c["surface"]}; border: 1px solid {c["line"]}; border-radius: 6px; padding: 6px 10px; color: {c["soft"]}; }}
+        QToolButton#explorationFilters:hover {{ background: {c["selected"]}; color: {c["hover"]}; }}
         QLabel[role="panelTitle"] {{ font-family: "{serif}"; font-size: 21pt; }}
         QLabel[role="section"] {{ font-weight: 600; }}
         QLabel[role="selection"] {{ font-weight: 600; color: {c["accent"]}; }}
@@ -1319,9 +1372,9 @@ def _stylesheet(c, serif, sans):
         QPushButton, QComboBox, QLineEdit, QSpinBox, QPlainTextEdit, QListWidget, QTreeWidget {{
             background: {c["surface"]};
             border: 1px solid {c["line"]};
-            border-radius: 5px;
+            border-radius: 7px;
         }}
-        QPushButton {{ padding: 6px 11px; min-height: 18px; }}
+        QPushButton {{ padding: 7px 12px; min-height: 22px; }}
         QPushButton[variant="quiet"] {{ background: transparent; border-color: transparent; }}
         QPushButton:hover, QPushButton:checked, QPushButton[variant="quiet"]:hover {{
             background: {c["selected"]};
@@ -1329,8 +1382,8 @@ def _stylesheet(c, serif, sans):
         }}
         QPushButton[variant="primary"] {{
             color: {c["accent_text"]};
-            background: {c["accent"]};
-            border-color: {c["accent"]};
+            background: {c["hover"]};
+            border-color: {c["hover"]};
             font-weight: 600;
         }}
         QPushButton[variant="primary"]:hover {{ background: {c["hover"]}; }}
@@ -1360,9 +1413,9 @@ def _stylesheet(c, serif, sans):
             selection-color: {c["accent_text"]};
         }}
         QTreeWidget, QListWidget {{ padding: 4px; outline: 0; }}
-        QTabWidget::pane {{ border: 1px solid {c["line"]}; border-radius: 7px; background: {c["surface"]}; }}
-        QTabBar::tab {{ background: transparent; color: {c["soft"]}; padding: 8px 13px; border-bottom: 2px solid transparent; }}
-        QTabBar::tab:selected {{ color: {c["accent"]}; border-bottom-color: {c["accent"]}; font-weight: 600; }}
+        QTabWidget::pane {{ border: 0; background: {c["chrome"]}; }}
+        QTabBar::tab {{ background: transparent; color: {c["soft"]}; padding: 10px 15px 11px; border-bottom: 2px solid transparent; }}
+        QTabBar::tab:selected {{ color: {c["hover"]}; border-bottom-color: {c["accent"]}; font-weight: 600; }}
         QTabBar::tab:hover {{ background: {c["selected"]}; }}
         QTreeWidget::item, QListWidget::item {{ min-height: 27px; padding: 1px 4px; }}
         QTreeWidget::item:selected, QListWidget::item:selected {{
@@ -1372,4 +1425,12 @@ def _stylesheet(c, serif, sans):
         QMenu::item {{ padding: 6px 14px; }}
         QMenu::item:selected {{ background: {c["selected"]}; }}
         QMenu::item:disabled {{ color: {c["disabled"]}; }}
+        QFrame#traceNavigator {{ background: {c["surface"]}; border: 1px solid {c["line"]}; }}
+        QFrame#mappingWorkspace {{ background: {c["paper"]}; }}
+        QLabel#companionPin {{ color: {c["soft"]}; font-size: 9pt; }}
+        QWidget#companionEmptyState {{ background: transparent; }}
+        QLabel#emptyStateTitle {{ color: {c["hover"]}; font-family: Georgia, serif; font-size: 18pt; font-weight: 600; }}
+        QLabel#emptyStateDetail {{ color: {c["soft"]}; font-size: 10pt; padding: 0 24px; }}
+        QToolButton[objectName^="sectionToggle_"] {{ color: {c["hover"]}; font-weight: 600; text-align: left; padding: 6px 2px; }}
+        QToolButton[role="sectionToggle"] {{ color: {c["hover"]}; font-weight: 600; text-align: left; }}
     """

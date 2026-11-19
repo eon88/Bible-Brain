@@ -623,6 +623,19 @@ class Database:
             a.verse_id FROM knowledge_relationships r JOIN knowledge_objects k ON k.id=r.to_id
             LEFT JOIN scripture_anchors a ON a.object_id=k.id WHERE r.from_id=? AND r.type='trace_member' ORDER BY r.position, r.created_at""", (trace_id,)).fetchall()
 
+    def trace_member_anchors(self, trace_id):
+        """Return trace members as precise Scripture anchors when available."""
+        return self._connection.execute("""SELECT a.verse_id, a.translation_code AS translation,
+                   a.start_offset AS start, a.end_offset AS end,
+                   c.book_code AS book, c.number AS chapter, v.number AS verse,
+                   r.id AS relationship_id, r.position
+            FROM knowledge_relationships r
+            JOIN scripture_anchors a ON a.object_id=r.to_id
+            JOIN canonical_verses v ON v.id=a.verse_id
+            JOIN chapters c ON c.id=v.chapter_id
+            WHERE r.from_id=? AND r.type='trace_member'
+            ORDER BY r.position, r.created_at""", (trace_id,)).fetchall()
+
     def move_trace_member(self, relationship_id: str, position: int) -> None:
         _require_integer(position, "Trace member position", 0)
         with _transaction(self._connection):
