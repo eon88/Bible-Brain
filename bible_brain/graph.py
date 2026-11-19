@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton, QTabWidget,
-    QVBoxLayout, QWidget, QInputDialog, QMessageBox, QFileDialog)
+    QVBoxLayout, QWidget, QInputDialog, QMessageBox, QFileDialog, QToolButton)
 from .database import ScriptureAnchor
 from .workspace import DATA_ERRORS, button, item_heading
 
@@ -12,15 +12,41 @@ class GraphWorkspace(QWidget):
     navigateRequested = Signal(object)
     traceChanged = Signal(object)
     def __init__(self, session, notify, show_error):
-        super().__init__(); self.setObjectName("explorePanel"); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None
+        super().__init__(); self.setObjectName("explorePanel"); self.session=session; self.notify=notify; self.show_error=show_error; self.selection=[]; self.active_trace=None; self.section_toggles={}
         layout=QVBoxLayout(self); layout.setContentsMargins(18,18,18,18); layout.setSpacing(12); head=QHBoxLayout(); title=QLabel("Study Companion"); title.setProperty("role","panelTitle"); head.addWidget(title); self.pin_label=QLabel("No pinned investigation"); self.pin_label.setObjectName("companionPin"); head.addWidget(self.pin_label,1); self.history_button=button("History", "companionHistory", self._show_history, "quiet"); head.addWidget(self.history_button); self.search=QLineEdit(); self.search.setPlaceholderText("Search your research…"); head.addWidget(self.search,1); head.addWidget(button("Search", "searchResearch", self._search)); self.closeButton=QPushButton("×"); self.closeButton.setToolTip("Close Study Companion"); self.closeButton.clicked.connect(self.hide); head.addWidget(self.closeButton); layout.addLayout(head)
         self.tabs=QTabWidget(); self.tabs.setObjectName("companionTabs"); self.tabs.addTab(self._cross_panel(),"Connections"); self.tabs.addTab(self._trace_panel(),"Traces"); self.tabs.addTab(self._study_panel(),"Studies"); self.tabs.currentChanged.connect(lambda index: self.session.update_ui_state(companion_tab=index)); layout.addWidget(self.tabs)
         state=self.session.ui_state; pin=state.get("companion_pin")
         if pin: self.pin_label.setText(f"Pinned · {pin.get('label','Investigation')}")
         self.tabs.setCurrentIndex(int(state.get("companion_tab",0)) if str(state.get("companion_tab",0)).isdigit() else 0)
+        self._apply_section_state()
     @property
     def database(self): return self.session.database
     def set_selection(self, anchors): self.selection=list(anchors); self.refresh()
+
+    def _section_pin(self):
+        pin=self.session.ui_state.get("companion_pin") or {}
+        return str(pin.get("id") or "none")
+
+    def _section_expanded(self, tab, key):
+        sections=self.session.ui_state.get("companion_sections",{})
+        return bool(sections.get(self._section_pin(),{}).get(f"{tab}:{key}",True))
+
+    def _set_section_expanded(self, tab, key, expanded):
+        sections=self.session.ui_state.get("companion_sections",{})
+        per_pin=dict(sections.get(self._section_pin(),{})); per_pin[f"{tab}:{key}"]=bool(expanded); sections=dict(sections); sections[self._section_pin()]=per_pin
+        self.session.update_ui_state(companion_sections=sections)
+
+    def _section(self, tab, key, title, content):
+        wrapper=QWidget(); layout=QVBoxLayout(wrapper); layout.setContentsMargins(0,4,0,4); layout.setSpacing(3)
+        toggle=QToolButton(); toggle.setObjectName(f"sectionToggle_{tab}_{key}"); toggle.setText(title); toggle.setCheckable(True); toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toggle.toggled.connect(lambda checked: (content.setVisible(checked), toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow), self._set_section_expanded(tab,key,checked)))
+        self.section_toggles[(tab,key)]=toggle; layout.addWidget(toggle); layout.addWidget(content); return wrapper
+
+    def _apply_section_state(self):
+        for (tab,key), toggle in self.section_toggles.items():
+            expanded=self._section_expanded(tab,key); toggle.blockSignals(True); toggle.setChecked(expanded); toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow); toggle.blockSignals(False)
+            parent=toggle.parentWidget();
+            if parent and parent.layout() and parent.layout().count()>1: parent.layout().itemAt(1).widget().setVisible(expanded)
 
     def open_trace_picker(self, anchors):
         if not anchors:
@@ -67,7 +93,7 @@ class GraphWorkspace(QWidget):
         pin={"id":subject_id,"book":anchor.book,"chapter":anchor.chapter,"verse":anchor.verse,"start":anchor.start,"end":anchor.end,"translation":anchor.translation,"label":f"{anchor.book} {anchor.chapter}:{anchor.verse}"}
         state=self.session.ui_state; history=[item for item in state.get("companion_history",[]) if item.get("id",item.get("label")) != subject_id]
         history.insert(0,pin); self.session.update_ui_state(companion_pin=pin, companion_history=history[:50])
-        self.pin_label.setText(f"Pinned · {pin['label']}")
+        self.pin_label.setText(f"Pinned · {pin['label']}"); self._apply_section_state()
     def _show_history(self):
         history=self.session.ui_state.get("companion_history",[])
         if not history:
@@ -79,7 +105,7 @@ class GraphWorkspace(QWidget):
     def _open_history(self, items, dialog):
         item=items.currentItem()
         if not item: return
-        entry=item.data(Qt.ItemDataRole.UserRole); self.session.update_ui_state(companion_pin=entry); self.pin_label.setText(f"Pinned · {entry.get('label','Investigation')}"); dialog.accept(); self.refresh()
+        entry=item.data(Qt.ItemDataRole.UserRole); self.session.update_ui_state(companion_pin=entry); self.pin_label.setText(f"Pinned · {entry.get('label','Investigation')}"); self._apply_section_state(); dialog.accept(); self.refresh()
     def _clear_history(self, dialog):
         if QMessageBox.question(self,"Clear history","Remove recent navigation history only? Saved research will remain.",QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
         self.session.update_ui_state(companion_history=[]); dialog.accept()
@@ -91,7 +117,7 @@ class GraphWorkspace(QWidget):
         QMessageBox.information(self,"Research search","\n".join(f"{r['title']} · {r['kind']} · {r['status']}" for r in rows))
     def _cross_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Connections"),1); top.addWidget(button("Add connection", "addConnection", self._add_connection,"primary")); l.addLayout(top)
-        self.connections=QListWidget(); self.connections.setObjectName("graphConnections"); self.connections.itemDoubleClicked.connect(self._open_connection); l.addWidget(self.connections,1)
+        self.connections=QListWidget(); self.connections.setObjectName("graphConnections"); self.connections.itemDoubleClicked.connect(self._open_connection); l.addWidget(self._section("connections","results","Connection results",self.connections),1)
         controls=QHBoxLayout(); self.review=QComboBox(); self.review.addItems(["Keep","Investigate","Park","Reject"]); controls.addWidget(self.review); controls.addWidget(button("Apply review", "reviewConnection", self._review_connection)); controls.addWidget(button("Edit", "editConnection", self._edit_connection)); l.addLayout(controls); return w
     def _refresh_connections(self):
         if not hasattr(self,'connections'): return
@@ -149,9 +175,9 @@ class GraphWorkspace(QWidget):
             b,c,v=a[0].split(':'); self.navigateRequested.emit(ScriptureAnchor(b,int(c),int(v),self.selection[0].translation if self.selection else None))
     def _trace_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Named traces"),1); top.addWidget(button("Create trace","createTrace",self._create_trace,"primary")); l.addLayout(top)
-        self.traces=QListWidget(); self.traces.setObjectName("traceList"); self.traces.currentItemChanged.connect(lambda *_: self._refresh_trace_members()); l.addWidget(self.traces,1)
+        self.traces=QListWidget(); self.traces.setObjectName("traceList"); self.traces.currentItemChanged.connect(lambda *_: self._refresh_trace_members()); l.addWidget(self._section("traces","saved","Saved traces",self.traces),1)
         controls=QHBoxLayout(); controls.addWidget(button("Add to trace","addToTrace",self._add_to_trace)); controls.addWidget(button("Edit trace","editTrace",self._edit_trace)); controls.addWidget(button("Move up","moveTraceUp",lambda: self._move_trace_member(-1))); controls.addWidget(button("Move down","moveTraceDown",lambda: self._move_trace_member(1))); self.active=QPushButton("Activate"); self.active.setCheckable(True); self.active.toggled.connect(self._toggle_trace); controls.addWidget(self.active); l.addLayout(controls)
-        self.trace_members_view=QListWidget(); self.trace_members_view.setObjectName("traceMembers"); self.trace_members_view.itemDoubleClicked.connect(self._open_trace_member); l.addWidget(self.trace_members_view,1); return w
+        self.trace_members_view=QListWidget(); self.trace_members_view.setObjectName("traceMembers"); self.trace_members_view.itemDoubleClicked.connect(self._open_trace_member); l.addWidget(self._section("traces","members","Trace members",self.trace_members_view),1); return w
     def _refresh_traces(self):
         if not hasattr(self,'traces'): return
         selected=self.traces.currentItem().data(Qt.ItemDataRole.UserRole) if self.traces.currentItem() else self.active_trace; self.traces.clear()
@@ -210,7 +236,7 @@ class GraphWorkspace(QWidget):
         if len(ref)==3: self.navigateRequested.emit(ScriptureAnchor(ref[0],int(ref[1]),int(ref[2]),self.selection[0].translation if self.selection else None))
     def _study_panel(self):
         w=QWidget(); l=QVBoxLayout(w); top=QHBoxLayout(); top.addWidget(item_heading("Studies"),1); top.addWidget(button("New study","newStudy",self._create_study,"primary")); l.addLayout(top)
-        self.study_list=QListWidget(); self.study_list.setObjectName("studyList"); self.study_list.itemDoubleClicked.connect(self._open_study); l.addWidget(self.study_list,1)
+        self.study_list=QListWidget(); self.study_list.setObjectName("studyList"); self.study_list.itemDoubleClicked.connect(self._open_study); l.addWidget(self._section("studies","dossiers","Study dossiers",self.study_list),1)
         controls=QHBoxLayout(); controls.addWidget(button("Edit", "editStudy", self._edit_study)); controls.addWidget(button("Attach Scripture", "attachStudyScripture", self._attach_study_selection)); controls.addWidget(button("Attach Trace", "attachStudyTrace", self._attach_study_trace)); controls.addWidget(button("Attach image", "attachStudyImage", self._attach_study_image)); controls.addWidget(button("History", "studyHistory", self._study_history)); l.addLayout(controls); return w
     def _refresh_studies(self):
         if not hasattr(self,'study_list'): return
