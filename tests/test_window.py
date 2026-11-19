@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QPushButton, QSpinBox, QToolButton,
 )
 
+from bible_brain.database import ScriptureAnchor
 from bible_brain.session import Session
 from bible_brain.window import MainWindow
 
@@ -219,3 +220,31 @@ class WindowTests(unittest.TestCase):
         self.window._show_traces()
         self.app.processEvents()
         self.assertIsNotNone(self.window.graph.findChild(QPushButton, "companionOriginalLanguage"))
+
+    def test_tree_of_life_journey_preserves_trace_order_and_origin(self):
+        translation = self.window.edition.currentData()
+        origin = ScriptureAnchor("REV", 2, 7, translation)
+        second = ScriptureAnchor("REV", 22, 2, translation)
+        third = ScriptureAnchor("GEN", 3, 22, translation)
+        for anchor in (origin, second, third):
+            self.session.database.scripture_anchor(anchor)
+        trace_id = self.session.database.create_trace("Tree of Life", "Lost and restored access", "#4f7d4a")
+        for position, anchor in enumerate((origin, second, third)):
+            self.session.database.add_trace_member(trace_id, self.session.database.scripture_anchor(anchor), position)
+        self.window.selection = [origin]
+        self.window._open_reference(origin)
+        self.window.graph.set_selection([origin])
+        self.window._open_companion_tab(1)
+        self.window.graph._refresh_traces()
+        self.window.graph.traces.setCurrentRow(0)
+        self.window.graph.active.setChecked(True)
+        self.app.processEvents()
+        self.assertEqual(self.window.trace_session_id, trace_id)
+        self.assertEqual(self.window.trace_index, 0)
+        self.assertEqual(self.window.trace_progress.text(), "1 of 3")
+        self.window._trace_step(1)
+        self.assertEqual(self.window.trace_index, 1)
+        self.assertEqual(self.window.trace_progress.text(), "2 of 3")
+        self.window._close_trace_from_reader()
+        self.assertIsNone(self.window.trace_session_id)
+        self.assertEqual((self.window.reader.book, self.window.reader.chapter), ("REV", 2))
