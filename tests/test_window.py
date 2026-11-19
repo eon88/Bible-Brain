@@ -12,7 +12,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog, QLineEdit, QListWidget, QMessageBox,
-    QPlainTextEdit, QPushButton, QSpinBox, QToolButton,
+    QPlainTextEdit, QPushButton, QSpinBox, QToolButton, QWidget,
 )
 
 from bible_brain.database import ScriptureAnchor
@@ -160,7 +160,13 @@ class WindowTests(unittest.TestCase):
         cursor.setPosition(span.text_start + 4, QTextCursor.MoveMode.KeepAnchor)
         reader.setTextCursor(cursor)
         reader.publish_selection()
-        self.assertTrue(self.window.findChild(QToolButton, "saveSelection").isVisible())
+        for action in ("exploreSelection", "traceSelection", "saveSelection", "copySelection"):
+            self.assertTrue(self.window.findChild(QWidget, action).isVisible(), action)
+        self.window.findChild(QWidget, "copySelection").click()
+        copied = self.app.clipboard().text()
+        self.assertIn("In t", copied)
+        self.assertIn("Genesis 1:1", copied)
+        self.assertIn(self.window.edition.currentText(), copied)
         self.window.graph.pin_selection(self.window.selection)
         self.assertEqual(self.session.ui_state["companion_pin"]["label"], "GEN 1:1")
         self.assertTrue(self.session.ui_state["companion_pin"]["id"])
