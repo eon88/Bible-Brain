@@ -28,6 +28,8 @@ Selecting text exposes deliberate actions only: **Explore**, **Trace**, **Save**
 
 The Study Companion is closed until requested and contains Connections, Traces and Studies. On a narrow window it becomes a draggable bottom sheet. Exploration markers are independently filterable; Mapping supports preview, explicit Follow/Back history and return to the originating Bible anchor. Trace reading follows saved member order and restores the starting passage when closed.
 
+New Studies capture observations, questions, interpretations and conclusions separately, can attach multiple existing Traces, and show those Trace links separately from connected Scripture in the readable dossier.
+
 ## Original languages (Bundle 02)
 
 Settings can import licensed Hebrew (`he`), Greek (`el`) and biblical Aramaic (`arc`)
