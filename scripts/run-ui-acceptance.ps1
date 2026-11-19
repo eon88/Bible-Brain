@@ -21,6 +21,16 @@ foreach ($artifact in @($portable, $installer)) {
     }
 }
 
+$shortcutPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Bible Brain.lnk'
+if (-not (Test-Path -LiteralPath $shortcutPath)) {
+    throw "Desktop shortcut is missing: $shortcutPath"
+}
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut($shortcutPath)
+if ([IO.Path]::GetFullPath($shortcut.TargetPath) -ne [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\Bible Brain\Bible Brain.exe'))) {
+    throw "Desktop shortcut does not target the installed Bible Brain executable."
+}
+
 Write-Host 'Acceptance tests passed.'
 Write-Host "Portable: $portable"
 Write-Host "Per-user installer: $installer"

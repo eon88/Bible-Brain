@@ -43,9 +43,9 @@
       <Component Id="BibleBrainExecutable" Guid="*">
         <File Id="BibleBrainExeFile" Source="$(var.AppSource)\Bible Brain.exe" KeyPath="yes">
           <Shortcut Id="BibleBrainStartShortcut" Directory="BibleBrainPrograms"
-                    Name="Bible Brain" Advertise="yes" WorkingDirectory="INSTALLFOLDER" />
+                    Name="Bible Brain" Advertise="no" WorkingDirectory="INSTALLFOLDER" />
           <Shortcut Id="BibleBrainDesktopShortcut" Directory="DesktopFolder"
-                    Name="Bible Brain" Advertise="yes" WorkingDirectory="INSTALLFOLDER" />
+                    Name="Bible Brain" Advertise="no" WorkingDirectory="INSTALLFOLDER" />
         </File>
         <RemoveFolder Id="RemoveBibleBrainPrograms" Directory="BibleBrainPrograms" On="uninstall" />
       </Component>

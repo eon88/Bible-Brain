@@ -93,7 +93,7 @@ if ($LASTEXITCODE -ne 0) { throw 'WiX could not harvest the application bundle.'
     "-dAppVersion=$Version" "-dProductCode=$productCode" @scopeArguments -out ($intermediate + '\\') $source $harvest
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not compile the installer definition.' }
 
-& (Join-Path $wix 'light.exe') -nologo -ext WixUIExtension -spdb -out $msi `
+& (Join-Path $wix 'light.exe') -nologo -ext WixUIExtension -spdb -sice:ICE43 -sice:ICE57 -out $msi `
     (Join-Path $intermediate 'BibleBrain.wixobj') (Join-Path $intermediate 'Application.wixobj')
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not link and validate the installer.' }
 
