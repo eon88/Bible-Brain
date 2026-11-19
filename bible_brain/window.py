@@ -589,6 +589,7 @@ class MainWindow(QMainWindow):
     def _trace_selection(self):
         if self.selection:
             self._open_companion_tab(1)
+            self.graph.open_trace_picker(self.selection)
 
     def _copy_selection(self):
         if not self.selection:

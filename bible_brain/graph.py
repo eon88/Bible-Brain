@@ -21,6 +21,42 @@ class GraphWorkspace(QWidget):
     @property
     def database(self): return self.session.database
     def set_selection(self, anchors): self.selection=list(anchors); self.refresh()
+
+    def open_trace_picker(self, anchors):
+        if not anchors:
+            return
+        dialog=QDialog(self); dialog.setWindowTitle("Choose a Trace"); dialog.resize(420, 420)
+        layout=QVBoxLayout(dialog); layout.addWidget(QLabel("Choose a saved Trace for this exact selection. Nothing is activated until you press Activate."))
+        traces=QListWidget()
+        for row in self.database.traces():
+            item=QListWidgetItem(row["title"]); item.setData(Qt.ItemDataRole.UserRole,row["id"]); item.setToolTip(row["description"]); traces.addItem(item)
+        layout.addWidget(traces,1)
+        controls=QHBoxLayout()
+        choose=button("Choose", "chooseTrace", dialog.accept, "primary")
+        create=button("Create new", "createTraceFromSelection", lambda: self._create_trace_from_picker(traces), "quiet")
+        add=button("Add selected", "addSelectionToTrace", lambda: self._add_picker_selection(traces), "quiet")
+        controls.addWidget(choose); controls.addWidget(create); controls.addWidget(add); controls.addWidget(button("Cancel", "cancelTracePicker", dialog.reject, "quiet")); layout.addLayout(controls)
+        if dialog.exec()==QDialog.DialogCode.Accepted and traces.currentItem():
+            self.traces.setCurrentRow(next((i for i in range(self.traces.count()) if self.traces.item(i).data(Qt.ItemDataRole.UserRole)==traces.currentItem().data(Qt.ItemDataRole.UserRole)), -1))
+            self.notify("Trace selected; press Activate to begin Trace reading")
+
+    def _create_trace_from_picker(self, traces):
+        name,ok=QInputDialog.getText(self,"Create trace","Name")
+        if not ok or not name.strip(): return
+        try:
+            trace_id=self.database.create_trace(name.strip()); self._refresh_traces()
+            self.database.add_trace_member(trace_id,self.database.scripture_anchor(self.selection[0]),0)
+            self._refresh_trace_members(); self.notify("Trace created and selection added")
+        except DATA_ERRORS as error: self.show_error("Could not create the trace",error)
+
+    def _add_picker_selection(self, traces):
+        item=traces.currentItem()
+        if not item: return
+        try:
+            trace_id=item.data(Qt.ItemDataRole.UserRole)
+            self.database.add_trace_member(trace_id,self.database.scripture_anchor(self.selection[0]),len(self.database.trace_members(trace_id)))
+            self._refresh_traces(); self.notify("Selection added to trace")
+        except DATA_ERRORS as error: self.show_error("Could not add the selection to the trace",error)
     def pin_selection(self, anchors):
         if not anchors: return
         anchor=anchors[0]; pin={"book":anchor.book,"chapter":anchor.chapter,"verse":anchor.verse,"translation":anchor.translation,"label":f"{anchor.book} {anchor.chapter}:{anchor.verse}"}
