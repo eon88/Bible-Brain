@@ -257,8 +257,10 @@ class DatabaseTests(unittest.TestCase):
         members = db.trace_members(trace)
         db.move_trace_member(members[-1]["relationship_id"], 0)
         self.assertEqual(db.trace_members(trace)[0]["relationship_id"], members[-1]["relationship_id"])
-        study = db.create_study("Tree of Life study", "Access", "Genesis loss", "How is access restored?", conclusions="Restoration", anchors=[ScriptureAnchor("REV", 2, 7, "TEST", 0, 12), ScriptureAnchor("REV", 22, 2)], trace_ids=[trace])
+        study = db.create_study("Tree of Life study", "Access", "Genesis loss", "How is access restored?", interpretations="A provisional reading", conclusions="Restoration", anchors=[ScriptureAnchor("REV", 2, 7, "TEST", 0, 12), ScriptureAnchor("REV", 22, 2)], trace_ids=[trace])
         self.assertEqual(db.study(study)["summary"], "Access")
+        self.assertEqual(db.study(study)["interpretations"], "A provisional reading")
+        self.assertEqual(len([row for row in db.relationships(study) if row["type"] == "study_related"]), 1)
         original_revision = db.note_revisions(study)[0]["id"]
         db.update_study(study, "Tree of Life study revised", "Access", "Genesis loss", "How is access restored?", conclusions="Restoration confirmed")
         self.assertEqual(db.study(study)["conclusions"], "Restoration confirmed")

@@ -1,6 +1,6 @@
 """User-controlled Cross-reference, Trace and Study panels."""
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton, QTabWidget,
     QVBoxLayout, QWidget, QInputDialog, QMessageBox, QFileDialog)
 from .database import ScriptureAnchor
@@ -213,11 +213,16 @@ class GraphWorkspace(QWidget):
         for row in self.database.studies():
             i=QListWidgetItem(row['title']); i.setData(Qt.ItemDataRole.UserRole,row['id']); i.setToolTip(row['summary']); self.study_list.addItem(i)
     def _create_study(self):
-        dialog=QDialog(self); dialog.setWindowTitle("New study"); form=QFormLayout(dialog); title=QLineEdit(); summary=QPlainTextEdit(); observations=QPlainTextEdit(); questions=QPlainTextEdit(); conclusions=QPlainTextEdit()
-        for label,widget in (("Title",title),("Summary",summary),("Observations",observations),("Questions",questions),("Conclusions",conclusions)): form.addRow(label,widget)
+        dialog=QDialog(self); dialog.setWindowTitle("New study"); form=QFormLayout(dialog); title=QLineEdit(); summary=QPlainTextEdit(); observations=QPlainTextEdit(); questions=QPlainTextEdit(); interpretations=QPlainTextEdit(); conclusions=QPlainTextEdit(); traces=QListWidget(); traces.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        for trace in self.database.traces():
+            item=QListWidgetItem(trace["title"]); item.setData(Qt.ItemDataRole.UserRole,trace["id"]); traces.addItem(item)
+        for label,widget in (("Title",title),("Summary",summary),("Observations",observations),("Questions",questions),("Interpretations",interpretations),("Conclusions",conclusions),("Attach traces",traces)): form.addRow(label,widget)
         controls=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel); controls.accepted.connect(dialog.accept); controls.rejected.connect(dialog.reject); form.addRow(controls)
         if dialog.exec()!=QDialog.DialogCode.Accepted: return
-        try: self.database.create_study(title.text(),summary.toPlainText(),observations.toPlainText(),questions.toPlainText(),conclusions=conclusions.toPlainText(),anchors=self.selection); self._refresh_studies(); self.notify("Study saved")
+        try:
+            trace_ids=[item.data(Qt.ItemDataRole.UserRole) for item in traces.selectedItems()]
+            self.database.create_study(title.text(),summary.toPlainText(),observations.toPlainText(),questions.toPlainText(),interpretations=interpretations.toPlainText(),conclusions=conclusions.toPlainText(),anchors=self.selection,trace_ids=trace_ids)
+            self._refresh_studies(); self.notify("Study saved")
         except DATA_ERRORS as error: self.show_error("Could not create the study",error)
     def _open_study(self,item):
         study_id=item.data(Qt.ItemDataRole.UserRole); row=self.database.study(study_id)
